@@ -40,7 +40,7 @@ def build_app(data: RunData) -> Dash:
         html.Div(
             f"{data.path.name} · {data.n_ticks} ticks · {data.n_agents} agents · "
             f"{data.n_regions} regions · sight={cfg['visibility']['sight_mean']}"
-            f"±{cfg['visibility']['sight_spread']} · ρ={cfg['preference']['rho_mean']}",
+            f"±{cfg['visibility']['sight_spread']}",
             style={"fontSize": "12px", "color": P["text_muted"],
                    "fontFamily": "ui-monospace, monospace"},
         ),

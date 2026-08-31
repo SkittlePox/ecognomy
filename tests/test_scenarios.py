@@ -101,10 +101,10 @@ def test_no_rational_policy_yet_solves_triangular():
     the companion test below pins down.
     """
     sc = get("triangular")
-    for kappa in (0.5, 1.0, 3.0, 10.0):
-        w = sc.world(visibility__sight_mean=20, visibility__sight_spread=0.0)
-        s = run(w, MyopicPolicy(kappa=kappa), 300).summary()
-        assert s["total_trades"] == 0, f"myopic traded at kappa={kappa}"
+    for sight in (1.0, 5.0, 20.0):
+        w = sc.world(visibility__sight_mean=sight, visibility__sight_spread=0.0)
+        s = run(w, MyopicPolicy(), 300).summary()
+        assert s["total_trades"] == 0, f"myopic traded at sight={sight}"
 
 
 def test_triangular_is_traversable_but_not_by_a_myopic_agent():
@@ -149,7 +149,7 @@ def test_myopic_will_not_produce_for_exchange():
 def test_rational_policies_never_trade_in_autarky():
     """Everyone already makes exactly what they want; there is nothing to gain."""
     sc = get("autarky")
-    for policy in (MyopicPolicy(), MyopicPolicy(kappa=1.0), MyopicPolicy(kappa=10.0)):
+    for policy in (MyopicPolicy(),):
         w = sc.world(visibility__sight_mean=20, visibility__sight_spread=0.0)
         assert run(w, policy, 200).summary()["total_trades"] == 0
 
@@ -168,6 +168,54 @@ def test_autarky_trades_are_welfare_destroying():
     off = run(sc.world(visibility__sight_mean=0), RandomPolicy(), 300).summary()
     assert on["total_trades"] > 0
     assert on["mean_reward"] < off["mean_reward"]
+
+
+def test_no_trade_can_make_a_rational_agent_worse_off():
+    """The guarantee a linear reward buys, and the reason it was adopted.
+
+    A posted price is exact at any quantity, so the mechanism's requirement that
+    both sides gain is a real guarantee rather than a marginal approximation.
+    Under the previous concave reward this failed for 14.8% of trade sides,
+    destroying about a fifth of the gross gains, because a price computed at the
+    margin was being applied to half a holding.
+    """
+    import numpy as np
+
+    from ecognomy.config import WorldConfig
+    from ecognomy.topology import Topology
+    from ecognomy.utility import utility
+    from ecognomy.world import World
+
+    w = World(WorldConfig(n_agents=20, seed=3, topology=Topology.line(3)))
+    pol = MyopicPolicy()
+    worst = 0.0
+    for _ in range(200):
+        before = w.inventory.copy()
+        w.step(pol.act(w, w.rng))
+        for tr in w.last_trades:
+            for who, gave, got, qg, qr in (
+                (tr.agent_a, tr.good_a, tr.good_b, tr.qty_a, tr.qty_b),
+                (tr.agent_b, tr.good_b, tr.good_a, tr.qty_b, tr.qty_a),
+            ):
+                x0 = before[who].astype(float)
+                x1 = x0.copy(); x1[gave] -= qg; x1[got] += qr
+                th = w.theta[who][None]
+                worst = min(worst, float(utility(x1[None], th)[0] - utility(x0[None], th)[0]))
+    assert worst >= -1e-6, f"a trade cost a rational agent {worst}"
+
+
+def test_comparative_advantage_needs_differing_tastes():
+    """Its content depends on preferences differing, not just efficiencies.
+
+    With a linear reward, two agents who value goods identically gain nothing by
+    exchanging however lopsided their holdings — so an earlier version of this
+    scenario, which gave both agents theta = (0.5, 0.5), was silently vacuous.
+    """
+    sc = get("comparative_advantage")
+    assert not np.allclose(sc.theta[0], sc.theta[1]), "tastes must differ"
+    assert (sc.efficiency > 0).all(), "neither agent may be locked out of a good"
+    w = sc.world(visibility__sight_mean=20, visibility__sight_spread=0.0)
+    assert run(w, MyopicPolicy(), 250).summary()["total_trades"] > 0
 
 
 def test_scenarios_conserve_goods_through_trade():

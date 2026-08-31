@@ -13,51 +13,45 @@ import pytest
 from ecognomy.actions import NO_MOVE, Actions
 from ecognomy.config import PreferenceConfig, ProductionConfig, SinkConfig, VisibilityConfig, WorldConfig
 from ecognomy.mechanism import BilateralMechanism
-from ecognomy.policy import RandomPolicy, run
+from ecognomy.policy import MyopicPolicy, RandomPolicy, run
 from ecognomy.topology import Topology
-from ecognomy.utility import ces_utility, marginal_utility
+from ecognomy.utility import marginal_value, utility
 from ecognomy.world import IN_TRANSIT, World
 
 
-# ------------------------------------------------------------------ utility
+# ------------------------------------------------------------------ reward
 
-def test_ces_matches_spec_table():
-    theta = np.array([[0.5, 0.5]] * 2)
-    q = np.array([[4.0, 0.0], [2.0, 2.0]])
-    assert ces_utility(q, theta, np.array([0.5, 0.5])) == pytest.approx([1.0, 2.0], abs=1e-5)
-    assert ces_utility(q, theta, np.array([1.0, 1.0])) == pytest.approx([2.0, 2.0], abs=1e-5)
-
-
-def test_zero_consumption_is_zero_utility():
-    for rho in (-1.0, 0.0, 0.5, 0.99):
-        u = ces_utility(np.zeros((1, 3)), np.full((1, 3), 1 / 3), np.array([rho]))
-        assert u[0] == pytest.approx(0.0, abs=1e-9)
+def test_reward_is_consumption_times_preference():
+    theta = np.array([[0.5, 0.3, 0.2]])
+    assert utility(np.array([[2.0, 0.0, 0.0]]), theta)[0] == pytest.approx(1.0)
+    assert utility(np.array([[1.0, 1.0, 1.0]]), theta)[0] == pytest.approx(1.0)
+    assert utility(np.zeros((1, 3)), theta)[0] == pytest.approx(0.0)
 
 
-def test_complements_annihilate_on_missing_good():
-    """rho < 0 with a missing good is worth exactly zero, not nan or inf."""
-    u = ces_utility(np.array([[5.0, 0.0]]), np.array([[0.5, 0.5]]), np.array([-1.0]))
-    assert np.isfinite(u[0]) and u[0] == 0.0
+def test_reward_is_exactly_linear_in_quantity():
+    """The property the whole design rests on: doubling a bundle doubles the
+    reward, so a posted price is correct at any trade size."""
+    theta = np.array([[0.4, 0.35, 0.25]])
+    q = np.array([[1.3, 0.7, 2.1]])
+    for k in (0.1, 2.0, 17.0):
+        assert utility(q * k, theta)[0] == pytest.approx(k * utility(q, theta)[0], rel=1e-5)
 
 
-def test_mrs_is_theta_ratio_at_balanced_basket():
-    """Spec claim: at equal quantities MRS == theta_a/theta_b, for any rho."""
-    theta = np.array([[0.7, 0.3]])
-    q = np.array([[2.0, 2.0]])
-    for rho in (-0.5, 0.3, 0.9):
-        mu = marginal_utility(q, theta, np.array([rho]))
-        assert mu[0, 0] / mu[0, 1] == pytest.approx(0.7 / 0.3, rel=1e-2)
-
-
-def test_mrs_falls_as_basket_tilts_only_when_rho_below_one():
-    """The channel that turns production specialisation into trade."""
+def test_variety_is_worth_nothing_in_itself():
+    """A concentrated bundle and a varied one of equal weighted value score the
+    same. Gains from trade come from differing preferences, never from a taste
+    for a mixed basket."""
     theta = np.array([[0.5, 0.5]])
-    balanced, tilted = np.array([[2.0, 2.0]]), np.array([[6.0, 2.0]])
-    for rho, expect_fall in ((0.5, True), (1.0, False)):
-        r = np.array([rho])
-        mrs_bal = np.divide(*marginal_utility(balanced, theta, r)[0])
-        mrs_tilt = np.divide(*marginal_utility(tilted, theta, r)[0])
-        assert bool(mrs_tilt < mrs_bal * 0.99) is expect_fall
+    assert utility(np.array([[4.0, 0.0]]), theta)[0] == pytest.approx(
+        utility(np.array([[2.0, 2.0]]), theta)[0])
+
+
+def test_marginal_value_does_not_depend_on_holdings():
+    """Scarcity does not raise willingness to pay. This is what makes a posted
+    price exact, and equally what stops a chokepoint opening a price wedge
+    through local shortage."""
+    theta = np.array([[0.6, 0.4]])
+    assert np.allclose(marginal_value(theta), theta)
 
 
 # --------------------------------------------------------------- mechanics
@@ -229,15 +223,16 @@ def test_failure_no_comparative_advantage():
     assert (ranks == ranks[0]).all(), "identical shape must remove comparative advantage"
 
 
-def test_failure_perfect_substitutes_kill_gains_from_variety():
-    """At rho -> 1 a varied bundle is worth no more than a concentrated one."""
-    theta = np.array([[0.25] * 4])
-    concentrated = np.array([[8.0, 0.0, 0.0, 0.0]])
-    varied = np.array([[2.0, 2.0, 2.0, 2.0]])
-    rho = np.array([0.999])
-    assert ces_utility(concentrated, theta, rho) == pytest.approx(
-        ces_utility(varied, theta, rho), rel=1e-2
-    )
+def test_failure_identical_preferences_kill_gains_from_trade():
+    """Under a linear reward, gains from trade come only from valuing goods
+    differently. Two agents with the same preferences have nothing to gain from
+    exchanging, however lopsided their holdings — so a population with uniform
+    tastes is a dead world regardless of how production is arranged.
+    """
+    w = World(WorldConfig(seed=9, n_agents=8, sink=SinkConfig(spoilage=(0.0,) * 5)))
+    w.theta[:] = np.full(w.n_goods, 1.0 / w.n_goods)  # everyone wants the same thing
+    m = run(w, MyopicPolicy(), 200)
+    assert m.summary()["total_trades"] == 0
 
 
 def test_failure_no_meetings_means_no_trade():

@@ -6,7 +6,7 @@ posting an offer carried an opportunity cost equal to the best alternative, and
 the result was a knife edge: a policy either never traded or traded constantly
 and starved. That was an artifact of the encoding, not economics.
 
-    consume    (N, G)  quantities to eat, clipped to inventory
+    consume    (N, G)  quantities to eat, clipped to inventory; +inf means all
     effort     (N, G)  effort allocation across goods, rows sum to <= 1
     price      (N, G)  subjective valuation, meaningful only up to scale
     max_trade  (N, G)  how much of each good the agent will part with
@@ -79,10 +79,13 @@ class ActionSpace:
         out = actions.copy()
         settled = world.region >= 0
 
-        out.consume = np.nan_to_num(out.consume, nan=0.0, posinf=0.0, neginf=0.0)
+        # +inf is meaningful for consume and max_trade: it says "all of it",
+        # which the clip to inventory below resolves exactly. Flattening it to
+        # zero here would silently turn "eat everything" into "eat nothing".
+        out.consume = np.nan_to_num(out.consume, nan=0.0, posinf=np.inf, neginf=0.0)
         out.effort = np.nan_to_num(out.effort, nan=0.0, posinf=0.0, neginf=0.0)
         out.price = np.nan_to_num(out.price, nan=0.0, posinf=0.0, neginf=0.0)
-        out.max_trade = np.nan_to_num(out.max_trade, nan=0.0, posinf=0.0, neginf=0.0)
+        out.max_trade = np.nan_to_num(out.max_trade, nan=0.0, posinf=np.inf, neginf=0.0)
 
         np.clip(out.consume, 0.0, None, out=out.consume)
         np.clip(out.effort, 0.0, None, out=out.effort)

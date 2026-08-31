@@ -154,19 +154,25 @@ def mutual_gains() -> Scenario:
 
 
 def comparative_advantage() -> Scenario:
-    """Both agents can make both goods, and both want both.
+    """Both agents can make both goods. Neither is dependent on the other.
 
-    Nobody is dependent -- autarky is survivable. Trade is worth doing only
-    because relative efficiencies differ, which is Ricardian specialisation
-    rather than raw dependence. Harder than `mutual_gains`, still bilateral.
+    Each is better at producing the good the *other* wants, so the profitable
+    move is to specialise away from your own taste and trade back. Unlike
+    `mutual_gains`, nobody is locked out of any good -- autarky is survivable
+    here, so this tests whether trade happens when it is merely advantageous
+    rather than necessary.
+
+    Preferences must differ for this to have any content. Reward is linear, so
+    gains from trade come only from valuing goods differently; two agents with
+    identical tastes have nothing to gain however lopsided their holdings.
     """
-    theta = _rows([0.5, 0.5], [0.5, 0.5])
-    eff = _rows([2.0, 0.5], [0.5, 2.0])
+    theta = _rows([0.85, 0.15], [0.15, 0.85])   # a0 wants apple, a1 wants banana
+    eff = _rows([0.40, 2.50], [2.50, 0.40])     # but each is better at the other's
     inv = np.full((2, 2), 0.5)
     return Scenario(
         name="comparative_advantage",
-        description="Two agents, two goods. Both want both and can make both, but "
-                    "with mirrored relative efficiency.",
+        description="Two agents, two goods. Each can make both, but is better at "
+                    "producing the one the other wants.",
         goods=("apple", "banana"),
         theta=theta, efficiency=eff, inventory=inv,
         region=np.zeros(2, dtype=np.int32),

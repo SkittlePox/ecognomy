@@ -27,7 +27,7 @@ uv pip install --python .venv/bin/python -e ".[dev]"
 | module | owns | swappable |
 |---|---|---|
 | `ecognomy/config.py` | the dataclass tree the control panel binds to | no |
-| `ecognomy/utility.py` | CES utility and marginal utility | no |
+| `ecognomy/utility.py` | the reward function | no |
 | `ecognomy/topology.py` | region graph (weighted, directed, cyclic) | no |
 | `ecognomy/world.py` | state arrays, tick phase order | no |
 | `ecognomy/actions.py` | the action vectors and their clipping | **yes** |
@@ -82,9 +82,11 @@ never a second y-axis.
   *ranking* of goods within an agent's efficiency vector; `scale_spread` only
   makes agents uniformly better or worse. A world with `shape_spread == 0` has no
   gains from trade on the production side, whatever else is set.
-- **rho < 1**, or no interior trade exists at all. **alpha < 1** too, or the CES
-  aggregate is homogeneous of degree 1 and there is no interior optimum in how
-  much to consume.
+- **Reward is linear**: consumption times preference, nothing else. Do not add
+  curvature to manufacture an effect — the point is to see effects emerge. The
+  consequence to keep in mind is that gains from trade come *only* from agents
+  valuing goods differently, and that willingness to pay never responds to
+  scarcity.
 - **Surplus is scored with true posted prices, never floored ones.** Prices are
   floored only for the division that forms an exchange rate. Scoring with the
   floored price lets `eps * rate` masquerade as gain — with a rate of ~2.6e4 that

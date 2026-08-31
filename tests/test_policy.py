@@ -11,7 +11,7 @@ import pytest
 from ecognomy.config import VisibilityConfig, WorldConfig
 from ecognomy.policy import MyopicPolicy, RandomPolicy, run
 from ecognomy.topology import Topology
-from ecognomy.utility import ces_utility, marginal_utility
+from ecognomy.utility import marginal_value
 from ecognomy.world import World
 
 
@@ -29,52 +29,32 @@ def test_myopic_beats_random_on_reward():
     assert myopic > random, f"myopic {myopic} vs random {random}"
 
 
-def test_myopic_posts_its_true_marginal_valuation():
-    """Rung 1 does not shade. Choosing how far to shade needs to know what
-    rivals post, which is a later rung."""
+def test_myopic_posts_its_true_preferences():
+    """Rung 1 does not shade. Under a linear reward the honest price is simply
+    theta, and it is exact at any trade size."""
     w = _world()
     a = MyopicPolicy().act(w, w.rng)
-    expected = marginal_utility(w.inventory.astype(np.float64), w.theta, w.rho, w.alpha)
-    assert np.allclose(a.price, np.maximum(expected, 0.0), atol=1e-5)
+    assert np.allclose(a.price, marginal_value(w.theta), atol=1e-6)
 
 
-def test_myopic_consumption_fraction_matches_the_closed_form():
-    """f = z/(1+z) with z = kappa**(1/(alpha-1)) maximises the consume-vs-hold
-    score exactly, so no search over candidate fractions is needed."""
+def test_myopic_offers_everything_and_eats_the_remainder():
+    """Trade resolves before consumption, and any executed trade must raise both
+    sides' posted value, so offering the lot can only improve the basket."""
     w = _world()
-    for kappa in (0.5, 1.0, 3.0):
-        a = MyopicPolicy(kappa=kappa).act(w, w.rng)
-        alpha = float(w.alpha[0])
-        z = kappa ** (1.0 / (alpha - 1.0))
-        expected = z / (1.0 + z)
-        held = w.inventory[0] > 1e-6
-        got = (a.consume[0][held] / w.inventory[0][held])
-        assert np.allclose(got, expected, atol=1e-4), f"kappa={kappa}"
+    a = MyopicPolicy().act(w, w.rng)
+    settled = w.region >= 0
+    assert np.allclose(a.max_trade[settled], w.inventory[settled], atol=1e-5)
+    assert np.isinf(a.consume[settled]).all(), "consume should mean 'whatever is left'"
 
 
-def test_consumption_fraction_is_a_genuine_interior_optimum():
-    """Regression: the raw CES aggregate is homogeneous of degree 1, which makes
-    the consume-vs-hold tradeoff linear in f, so the optimum is always a corner
-    and kappa is a knife edge. alpha < 1 is what creates an interior answer."""
-    theta = np.full((1, 3), 1 / 3)
-    rho = np.array([0.5])
-    x = np.array([[3.0, 2.0, 1.0]])
-    kappa = 3.0
-
-    def score(f, alpha):
-        a = np.array([alpha])
-        u_eat = ces_utility(x * f, theta, rho, a)[0]
-        u_keep = ces_utility(x * (1 - f), theta, rho, a)[0]
-        u_now = ces_utility(x, theta, rho, a)[0]
-        return u_eat + kappa * (u_keep - u_now)
-
-    grid = np.linspace(0.01, 0.99, 99)
-    best = grid[np.argmax([score(f, 0.5) for f in grid])]
-    z = kappa ** (1.0 / (0.5 - 1.0))
-    assert best == pytest.approx(z / (1 + z), abs=0.02)
-    # With alpha == 1 the score is monotone, so no interior optimum exists.
-    flat = [score(f, 0.999) for f in grid]
-    assert np.argmax(flat) in (0, len(grid) - 1)
+def test_infinite_consume_means_everything_not_nothing():
+    """Regression: sanitising ran nan_to_num with posinf=0, which turned 'eat
+    everything' into 'eat nothing' and drove population welfare negative."""
+    w = _world()
+    raw = MyopicPolicy().act(w, w.rng)
+    clean = w.action_space.sanitize(w, raw)
+    settled = w.region >= 0
+    assert np.allclose(clean.consume[settled], w.inventory[settled], atol=1e-5)
 
 
 def test_myopic_produces_only_where_it_pays():
@@ -89,20 +69,21 @@ def test_myopic_produces_only_where_it_pays():
 
 
 def test_myopic_emits_only_legal_actions():
-    """Sanitising must be a no-op on a policy that knows the rules.
+    """Sanitising must not have to *correct* a policy that knows the rules.
 
-    Under the old discrete space this caught a real bug: consume actions arrived
-    with a zero quantity, were rejected, and agents produced without ever eating.
+    `consume` is exempt: the policy says +inf meaning "whatever is left after
+    trading", and sanitising resolves that against inventory rather than fixing
+    a mistake. Everything else must pass through untouched.
     """
     w = _world()
     pol = MyopicPolicy()
     for _ in range(50):
         raw = pol.act(w, w.rng)
         clean = w.action_space.sanitize(w, raw)
-        assert np.allclose(raw.consume, clean.consume, atol=1e-5)
         assert np.allclose(raw.effort, clean.effort, atol=1e-5)
         assert np.allclose(raw.max_trade, clean.max_trade, atol=1e-5)
         assert (raw.move == clean.move).all()
+        assert (clean.consume >= 0).all() and np.isfinite(clean.consume).all()
         w.step(raw)
 
 

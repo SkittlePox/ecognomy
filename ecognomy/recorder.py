@@ -117,7 +117,7 @@ class RunRecorder:
             "snap_visibility": np.stack(self.visibility) if self.visibility else np.zeros((0,)),
             # agent statics
             "theta": w.theta, "theta_base": w.theta_base,
-            "efficiency": w.efficiency, "mobility": w.mobility, "rho": w.rho,
+            "efficiency": w.efficiency, "mobility": w.mobility,
             "sight": w.sight,
             # topology
             "edge_src": w.topology.src, "edge_dst": w.topology.dst,

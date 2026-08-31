@@ -17,16 +17,18 @@ GOOD_NAMES: tuple[str, ...] = ("apple", "banana", "cherry", "durian", "elderberr
 
 @dataclass
 class PreferenceConfig:
-    """Tastes. `theta` sets what agents want; `rho` sets how substitutable it is."""
+    """Tastes.
+
+    `theta` is the whole of it. Reward is consumption times preference and
+    nothing more, so there is no substitutability or curvature parameter: an
+    agent's value for a good does not change with how much of it it holds.
+
+    Low concentration gives sharply specialised tastes, which is what creates
+    gains from trade -- under a linear reward those come *only* from agents
+    valuing goods differently, never from their holding different amounts.
+    """
 
     dirichlet_concentration: float = 0.6  # low => sharply specialised tastes
-    rho_mean: float = 0.5  # must be < 1 or no interior trade exists
-    rho_spread: float = 0.0  # per-agent dispersion; 0 => uniform population
-    # Concavity in scale. The CES aggregate alone has constant returns, which
-    # leaves no interior optimum in how much to consume per tick; alpha < 1
-    # supplies diminishing returns without touching substitution, since MRS is
-    # invariant under a monotone transform.
-    alpha: float = 0.5
 
 
 @dataclass
@@ -164,8 +166,6 @@ class WorldConfig:
         return len(self.goods)
 
     def __post_init__(self) -> None:
-        if self.preference.rho_mean >= 1.0:
-            raise ValueError("rho must be < 1; at rho == 1 goods are perfect substitutes and no interior trade exists")
         if len(self.sink.spoilage) != self.n_goods:
             raise ValueError(f"spoilage has {len(self.sink.spoilage)} entries, expected {self.n_goods}")
         if not 0 <= self.token.token_good < self.n_goods:

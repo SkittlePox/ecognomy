@@ -37,8 +37,10 @@ def build(data):
                                                  "marginLeft": "16px"}),
         ], style={"display": "flex", "alignItems": "center", "marginBottom": "14px"}),
 
-        html.Div("Posted price — its own valuation of each good, relative to its "
-                 "average. Trades are struck between these lines and its counterparties'.",
+        html.Div("Posted price — its own valuation of each good, relative to its average. "
+                 "Under a linear reward these are the agent's fixed preference weights, so "
+                 "the lines are flat by construction; movement here would mean a policy that "
+                 "shades its prices rather than posting them honestly.",
                  style={"fontSize": "11px", "color": P["text_muted"], "margin": "0 0 4px"}),
         dcc.Graph(id=f"{_ID}-price", config={"displayModeBar": False}),
 
@@ -84,7 +86,7 @@ def register(app, data):
                    f"   ·   sight {int(data['sight'][i])}"
                    f"   ·   mobility {data['mobility'][i]:.2f}")
 
-        rel = _relative(data["snap_price"][:, i, :])
+        rel = _relative(data["snap_price"][:, i, :])  # constant under linear reward
         fig = go.Figure()
         for g, name in enumerate(data.goods):
             line(fig, t, rel[:, g], name, series_color(g))

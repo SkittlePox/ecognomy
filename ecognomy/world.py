@@ -12,7 +12,7 @@ import numpy as np
 from ecognomy.actions import NO_MOVE, Actions, ActionSpace
 from ecognomy.config import WorldConfig
 from ecognomy.mechanism import BilateralMechanism, Trade
-from ecognomy.utility import ces_utility
+from ecognomy.utility import utility
 
 IN_TRANSIT = -1
 
@@ -69,9 +69,6 @@ class World:
         ).astype(np.float32)
         self.theta_base = self.theta.copy()
 
-        rho = cfg.preference.rho_mean + cfg.preference.rho_spread * rng.standard_normal(n)
-        self.rho = np.minimum(rho, 1.0 - 1e-3).astype(np.float32)
-        self.alpha = np.full(n, cfg.preference.alpha, dtype=np.float32)
 
         # Production efficiency. Scale makes agents uniformly better or worse and
         # creates no comparative advantage; shape varies the *ranking* of goods
@@ -195,16 +192,15 @@ class World:
     def _phase_consume(self, actions: Actions, reward: np.ndarray) -> None:
         """Voluntary consumption. Nothing forces an agent to eat, which is what
         leaves hoarding and cornering available as strategies."""
-        # A full bundle, not one good. CES is defined over a bundle, so under
-        # complements (rho < 0) consuming a single good is worth exactly zero and
-        # that whole regime would be unreachable.
+        # A full bundle. Reward is linear in each good, so what matters is only
+        # how much of each is eaten, never the mix.
         consumed = np.minimum(actions.consume, self.inventory).astype(np.float32)
         self.inventory -= consumed
         self.last_consumption = consumed
         self.goods_destroyed += float(consumed.sum())
-        utility = ces_utility(consumed, self.theta, self.rho, self.alpha)
-        self.last_utility = utility
-        reward += utility
+        gained = utility(consumed, self.theta)
+        self.last_utility = gained
+        reward += gained
 
     def _phase_spoil(self) -> None:
         """Decay held goods. `spoilage` is the hoardability knob: a low-spoilage

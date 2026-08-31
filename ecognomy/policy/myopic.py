@@ -1,28 +1,28 @@
 """Rung 1: myopic rationality, with no learned parameters.
 
-The agent knows its own preferences, substitution parameter, production
-efficiency and inventory, and nothing whatever about anyone else. Under the
-vector action space it emits all of its decisions at once:
+Under a linear reward the myopic policy is almost trivial, and that is a feature
+-- there is nothing left to tune, so anything the population does is a property
+of the world rather than of a hand-set constant.
 
-    price      its own marginal valuation of each good, posted honestly
-    consume    the closed-form optimal fraction of its holdings
-    effort     all of it on the good with the highest marginal value
-    max_trade  a fixed fraction of each holding
-
-**There is no markup parameter.** The posted price is simultaneously the
-valuation and the ask, so a rung that posts honestly has nothing left to tune.
-Shading prices to capture more of the surplus means overstating what you hold and
-understating what you want, and choosing how far to shade requires knowing what
-rivals post -- which is rung 3, not this one.
+    price      its own preference weights, posted honestly. A good's value never
+               changes with how much is held, so this is exact at any quantity
+               and the mechanism can never approve a trade that hurts it.
+    max_trade  everything it holds. Trade resolves before consumption within a
+               tick, and every executed trade must raise both sides' posted
+               value, so offering the lot can only improve the basket.
+    consume    whatever survives trading. A good is worth the same now as later
+               while spoilage taxes holding it, so waiting is never better.
+    effort     all of it on the good with the highest value x yield, since
+               production is linear in effort and the optimum is a corner.
 
 What this rung structurally cannot do:
 
-  * It never accepts a good it does not consume, because it prices such a good at
-    zero and the mechanism requires strictly positive surplus on both sides. That
-    rules out indirect exchange, money, and arbitrage -- all the same behaviour.
+  * It never accepts a good it does not consume: it prices such a good at zero
+    and the mechanism requires strictly positive surplus on both sides. That
+    rules out indirect exchange, money and arbitrage -- the same behaviour under
+    three names -- which is exactly what the `triangular` scenario detects.
+  * It never holds anything for later, so it cannot corner a market.
   * It cannot choose where to move, having no information about other regions.
-  * It posts honest prices, so it captures only the geometric-mean split of each
-    trade rather than competing for a larger share.
 """
 
 from __future__ import annotations
@@ -31,29 +31,19 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from ecognomy.actions import NO_MOVE, Actions
-from ecognomy.utility import marginal_utility
-
-_EPS = 1e-12
+from ecognomy.actions import Actions
+from ecognomy.utility import marginal_value
 
 
 @dataclass
 class MyopicPolicy:
-    """One-step utility maximisation against the agent's own preferences.
+    """Immediate value maximisation against the agent's own preferences.
 
     Args:
-        kappa: value of a unit of stock utility against a unit of consumed
-            utility. Above 1 the agent is patient and accumulates; below 1 it is
-            impatient and eats down its holdings.
-        max_trade_fraction: share of each holding the agent will part with per
-            tick. Caps trades so the marginal valuation posted in `price` stays a
-            reasonable approximation over the quantity actually exchanged.
         explore_move: per-tick probability of a random relocation. Undirected,
             because this rung has no basis for preferring one region.
     """
 
-    kappa: float = 3.0
-    max_trade_fraction: float = 0.5
     explore_move: float = 0.02
 
     def act(self, world, rng: np.random.Generator) -> Actions:
@@ -61,29 +51,14 @@ class MyopicPolicy:
         inv = world.inventory.astype(np.float64)
         actions = Actions.idle(n, g)
 
-        # --- price: honest marginal valuation, which is the whole strategy here
-        price = marginal_utility(inv, world.theta, world.rho, world.alpha)
-        actions.price = np.maximum(price, 0.0).astype(np.float32)
+        actions.price = marginal_value(world.theta).astype(np.float32)
+        actions.max_trade = inv.astype(np.float32)
+        # Clipped to inventory by the world, after trading has resolved.
+        actions.consume = np.full((n, g), np.inf, dtype=np.float32)
 
-        # --- consume: closed-form optimum, no search
-        #
-        # CES times alpha is homogeneous of degree alpha, so consuming fraction f
-        # of a holding worth U scores  U * [ f**a + kappa*((1-f)**a - 1) ].
-        # Setting the derivative to zero gives f = z/(1+z) with z = kappa**(1/(a-1)),
-        # which is exact and costs nothing to evaluate.
-        alpha = np.clip(world.alpha.astype(np.float64), 1e-3, 1.0 - 1e-3)
-        z = np.power(max(self.kappa, _EPS), 1.0 / (alpha - 1.0))
-        frac = (z / (1.0 + z))[:, None]
-        actions.consume = (inv * frac).astype(np.float32)
-
-        # --- effort: the action space permits splitting a tick across goods,
-        # but production is *linear* in effort within a tick, so splitting never
-        # beats going all-in and the optimum is always a corner. A split becomes
-        # rational only with diminishing returns inside the tick (effort**beta,
-        # beta < 1), which the environment does not currently impose.
         stock = world.stock[np.clip(world.region, 0, None)]
-        yield_per_tick = np.minimum(world.efficiency.astype(np.float64), stock)
-        value = actions.price.astype(np.float64) * yield_per_tick
+        value = world.theta.astype(np.float64) * np.minimum(
+            world.efficiency.astype(np.float64), stock)
         best = np.argmax(value, axis=1)
         rows = np.arange(n)
         worth_it = value[rows, best] > world.config.production.effort_cost
@@ -91,20 +66,13 @@ class MyopicPolicy:
         effort[rows[worth_it], best[worth_it]] = 1.0
         actions.effort = effort
 
-        # --- max_trade: a bounded slice of each holding
-        actions.max_trade = (inv * self.max_trade_fraction).astype(np.float32)
-
-        # --- move: undirected exploration
         movers = (rng.random(n) < self.explore_move) & (world.region >= 0)
         for i in np.flatnonzero(movers):
             out = world.topology.out_edges(world.region[i])
             if out.size:
                 actions.move[i] = int(rng.choice(out))
 
-        # An agent crossing an edge can do nothing but arrive. Zeroing here
-        # rather than leaving it to `sanitize` keeps the policy's proposals
-        # legal by construction, so a mismatch after sanitising is a real bug
-        # rather than expected tidying.
+        # An agent crossing an edge can do nothing but arrive.
         in_transit = world.region < 0
         actions.consume[in_transit] = 0.0
         actions.effort[in_transit] = 0.0

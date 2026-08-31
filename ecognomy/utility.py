@@ -1,111 +1,61 @@
-"""CES utility.
+"""Reward.
 
-    u(q) = [ ( sum_g theta_g * q_g**rho ) ** (1/rho) ] ** alpha
+    u_i(q) = sum_g  theta_ig * q_ig
 
-The CES aggregate alone is homogeneous of degree 1 -- u(f*q) == f*u(q) -- so it
-has constant returns to scale and no interior optimum in *how much* to consume.
-`alpha` < 1 is a concave transform supplying diminishing returns to scale. It
-leaves every substitution property untouched, because the marginal rate of
-substitution is invariant under a monotone transform: alpha changes how much to
-consume, rho changes what to consume, and the two do not interact.
+An agent's reward is the amount of each good it consumed, multiplied by its
+preference for that good. Nothing else.
 
-`theta` sets relative desirability; `rho` sets substitutability. They are
-independent: the marginal rate of substitution is
+This is deliberately linear, and the consequences are worth stating because they
+are load-bearing rather than incidental:
 
-    MRS_ab = (theta_a/theta_b) * (q_a/q_b)**(rho-1)
+  * **A posted price is exact at any quantity.** The value of a good never
+    changes with how much you hold, so the rate an agent should demand for one
+    unit is the rate it should demand for a thousand. Under the previous concave
+    (CES) reward, a posted price was a *marginal* valuation and trades were for
+    half a holding, so the mechanism routinely approved trades that left a
+    participant worse off -- 14.8% of trade sides, destroying about a fifth of
+    the gross gains. That failure mode is now structurally impossible.
 
-so theta alone fixes the MRS at a balanced basket, while rho fixes how fast the
-MRS moves as the basket tilts. At rho == 1 the MRS never moves and no interior
-trade exists. See `docs/environment.md`.
+  * **Gains from trade come only from differing preferences**, never from
+    differing inventories. Two agents who value goods identically have nothing
+    to gain by exchanging, however lopsided their holdings. That is correct for
+    linear reward: with no taste for variety, an agent simply makes and eats
+    whatever is worth most to it.
+
+  * **Willingness to pay does not respond to scarcity.** Holding almost none of
+    a good does not make an agent want it more. Regional price differences are
+    therefore compositional -- they reflect which agents are standing where --
+    rather than driven by local shortage.
+
+Curvature was removed rather than set to zero: a reward function with a
+substitution parameter permanently pinned to "linear" is an unused branch that
+rots. The concave version is in the git history if it is ever wanted back.
 """
 
 from __future__ import annotations
 
 import numpy as np
 
-# |rho| below this is treated as the Cobb-Douglas limit, where the closed form
-# divides by zero.
-COBB_DOUGLAS_TOL = 1e-4
 
-# Floor on quantities in the complements regime. With rho < 0 a zero quantity
-# sends its term to infinity; the limit of the whole expression is 0, which is
-# economically right (a missing essential good is worthless) but arrives there
-# through inf and would otherwise produce nan.
-QTY_FLOOR = 1e-12
-
-
-def ces_utility(
-    q: np.ndarray,
-    theta: np.ndarray,
-    rho: np.ndarray,
-    alpha: np.ndarray | float | None = None,
-) -> np.ndarray:
-    """Per-agent CES utility of a consumption bundle.
+def utility(consumed: np.ndarray, theta: np.ndarray) -> np.ndarray:
+    """Per-agent reward from a consumption bundle.
 
     Args:
-        q: (N, G) non-negative quantities consumed this tick.
+        consumed: (N, G) non-negative quantities consumed this tick.
         theta: (N, G) non-negative preference weights.
-        rho: (N,) substitution parameters, each < 1.
-        alpha: (N,) or scalar concavity in scale, each in (0, 1]. Defaults to 1,
-            which is the raw CES aggregate and has constant returns to scale.
 
     Returns:
-        (N,) utility.
+        (N,) reward.
     """
-    q = np.maximum(np.asarray(q, dtype=np.float64), 0.0)
-    theta = np.asarray(theta, dtype=np.float64)
-    rho = np.asarray(rho, dtype=np.float64)
-
-    weights = theta / np.maximum(theta.sum(axis=1, keepdims=True), QTY_FLOOR)
-
-    # Cobb-Douglas limit: u = prod_g q_g ** w_g, computed in log space.
-    with np.errstate(divide="ignore", invalid="ignore"):
-        log_q = np.log(np.maximum(q, QTY_FLOOR))
-        cobb_douglas = np.exp((weights * log_q).sum(axis=1))
-    # A true zero in any weighted good annihilates the product.
-    annihilated = ((q <= 0.0) & (weights > 0.0)).any(axis=1)
-    cobb_douglas = np.where(annihilated, 0.0, cobb_douglas)
-
-    # General case. Guard the base so rho < 0 does not raise on zeros; the
-    # `missing` mask below overrides the result where it matters.
-    r = rho[:, None]
-    with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
-        # Exact zero for q == 0 when rho > 0. When rho < 0 the true limit is
-        # inf, but the `missing` mask below sets those agents to 0 utility,
-        # which is the correct limit of the whole expression.
-        powered = np.where(q > 0.0, np.power(np.maximum(q, QTY_FLOOR), r), 0.0)
-        total = (theta * powered).sum(axis=1)
-        general = np.power(np.maximum(total, 0.0), 1.0 / np.where(np.abs(rho) < COBB_DOUGLAS_TOL, 1.0, rho))
-
-    # Complements with a missing good: utility is exactly zero.
-    missing = ((q <= 0.0) & (theta > 0.0)).any(axis=1) & (rho < 0.0)
-    general = np.where(missing, 0.0, general)
-
-    out = np.where(np.abs(rho) < COBB_DOUGLAS_TOL, cobb_douglas, general)
-    out = np.nan_to_num(out, nan=0.0, posinf=0.0, neginf=0.0)
-    if alpha is not None:
-        a = np.asarray(alpha, dtype=np.float64)
-        out = np.power(np.maximum(out, 0.0), a)
-    return np.nan_to_num(out, nan=0.0, posinf=0.0, neginf=0.0).astype(np.float32)
+    q = np.maximum(np.asarray(consumed, dtype=np.float64), 0.0)
+    return (np.asarray(theta, dtype=np.float64) * q).sum(axis=1).astype(np.float32)
 
 
-def marginal_utility(
-    q: np.ndarray,
-    theta: np.ndarray,
-    rho: np.ndarray,
-    alpha: np.ndarray | float | None = None,
-    eps: float = 1e-4,
-) -> np.ndarray:
-    """(N, G) numerical marginal utility of each good at bundle `q`.
+def marginal_value(theta: np.ndarray) -> np.ndarray:
+    """(N, G) value of one more unit of each good.
 
-    Used by policies to price goods and by tests to check that MRS behaves as
-    the spec claims. Numerical rather than closed-form so it stays correct if
-    the utility form is swapped.
+    Constant, and equal to the preference weight itself -- which is the whole
+    point of a linear reward. It takes no arguments beyond `theta` because it
+    depends on nothing else, and in particular not on what the agent holds.
     """
-    base = ces_utility(q, theta, rho, alpha)
-    out = np.empty(q.shape, dtype=np.float32)
-    for g in range(q.shape[1]):
-        bumped = q.copy()
-        bumped[:, g] += eps
-        out[:, g] = (ces_utility(bumped, theta, rho, alpha) - base) / eps
-    return out
+    return np.asarray(theta, dtype=np.float64)

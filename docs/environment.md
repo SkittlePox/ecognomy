@@ -15,7 +15,7 @@ coordination problem with a known solution.
 - `S` — world state, including in-transit agents.
 - `A_i` — per-agent action set, varies by state (masked).
 - `P` — transition, defined by the tick phase order below.
-- `R_i` — individual reward: CES consumption utility net of effort and travel.
+- `R_i` — individual reward: consumption times preference, net of effort and travel.
 - `O_i` — partial observation. Agents never see others' inventories, preferences,
   efficiencies, or mobility. Those must be modeled from observed behavior.
 - `γ` — discount, config.
@@ -48,66 +48,46 @@ Per-tick reward for agent `i`:
 ```
 R_i(t) = u_i(q_i(t))  −  effort_cost · effort_i(t)  −  travel_cost_i(t)
 
-u_i(q) = [ ( Σ_g  θ_ig · q_g^ρ )^(1/ρ) ]^α
+u_i(q) = Σ_g  θ_ig · q_g
 ```
 
-where `q_i(t)` is the vector *consumed this tick*. Consumption is entirely voluntary —
-there is no forced draw. An agent may hold inventory indefinitely and consume nothing,
-which is what makes hoarding and market-cornering available strategies.
+where `q_i(t)` is the vector *consumed this tick*. **Reward is the amount of each
+good consumed multiplied by the preference for it, and nothing else.** There is no
+substitutability parameter and no curvature: an agent's value for a good does not
+change with how much it holds.
 
-**On flat per-tick penalties.** A constant "tick of pain" is policy-invariant: it shifts
-every trajectory's return equally and changes no decision. It is deliberately not used.
-Consumption pressure comes from two state-dependent sources instead:
+Consumption is entirely voluntary — an agent may hold inventory indefinitely and
+consume nothing, which is what leaves hoarding and market-cornering available.
 
-1. **Concavity of CES** (`ρ < 1`). Marginal utility falls in quantity, so consuming
-   steadily beats consuming in bulk, and a varied bundle beats a concentrated one.
-2. **Spoilage** `δ_g`. Held goods decay, so inventory has a carrying cost.
+**On flat per-tick penalties.** A constant "tick of pain" is policy-invariant: it
+shifts every trajectory's return equally and changes no decision. It is deliberately
+not used. Consumption pressure comes from **spoilage** `δ_g` instead — held goods
+decay, so inventory has a carrying cost, and unlike a flat penalty that changes
+decisions.
 
-Together these remove idleness as a stable attractor without any shaped reward.
+### What linearity buys, and what it costs
 
-### α, the scale knob
+**A posted price is exact at any quantity.** Since a good's value never changes, the
+rate an agent should demand for one unit is the rate it should demand for a thousand.
+The mechanism's requirement that both sides gain is therefore a real guarantee rather
+than a marginal approximation. Under a concave reward it was not: a price computed at
+the margin, applied to half a holding, approved trades that left a participant worse
+off — measured at **14.8% of trade sides, destroying about a fifth of the gross
+gains.** That failure mode is now structurally impossible, and a test asserts it.
 
-The CES aggregate alone is **homogeneous of degree 1**: `u(f·q) = f·u(q)`. That
-gives constant returns to scale and leaves no interior optimum in *how much* to
-consume — the consume-versus-hold tradeoff becomes linear, so the answer is
-always a corner. `α < 1` is a concave transform supplying diminishing returns to
-scale.
+**Gains from trade come only from differing preferences.** Two agents who value goods
+identically have nothing to gain by exchanging, however lopsided their holdings. With
+a concave reward, inventory differences were a second, independent source of gains;
+that channel is closed. A population with uniform tastes is now a dead world whatever
+its production arrangement, and that is one of the failure-mode tests.
 
-It does not disturb anything ρ does, because **the marginal rate of substitution
-is invariant under a monotone transform**. α governs how much to consume; ρ
-governs what to consume; the two do not interact.
-
-### ρ, the substitutability knob
-
-`σ = 1/(1−ρ)` is the elasticity of substitution, constant at all quantity levels.
-`ρ = 1` → perfect substitutes (`σ = ∞`); `ρ → 0` → Cobb-Douglas (`σ = 1`);
-`ρ → −∞` → Leontief complements (`σ = 0`).
-
-With `θ = (0.5, 0.5)` over apple and banana:
-
-| consumed | `ρ = 0.5` | `ρ = 1` |
-|---|---|---|
-| (4, 0) | 1.0 | 2.0 |
-| (2, 2) | **2.0** | 2.0 |
-
-At `ρ = 0.5` variety is worth double the same total quantity, so trade has a motive.
-At `ρ = 1` the bundles are indistinguishable and no trade is worth making. `ρ` therefore
-decides both whether gains from trade exist and whether any good can hold a price floor,
-which is a precondition for a token becoming money.
-
-### sight, the market-access knob
-
-`sight_i` is how many of its region's posted prices an agent can see, and it is the
-informational counterpart to `mobility_i`. **Each agent has a different K**, drawn
-log-normally, so market access is a capability that varies across the population rather
-than a constant. Agents who see more of the board find better rates: measured
-correlation between `sight` and lifetime welfare is about **+0.42**, so broker and
-arbitrageur roles can emerge from a drawn attribute rather than being assigned.
-
-It is also the search-friction knob. Full visibility for everyone would largely dissolve
-the double coincidence of wants, which is the friction a medium of exchange exists to
-solve. `sight_mean = 0` disables the market entirely and is how the autarky
-counterfactual is run.
+**Willingness to pay does not respond to scarcity.** Holding almost none of a good
+does not make an agent want it more. Regional price differences are therefore
+*compositional* — they reflect which agents are standing where — rather than driven
+by local shortage. A throttled chokepoint can still sort agents between regions, but
+it cannot open a price wedge by making a good locally dear. This is a real change to
+one of the observables `handoff.md` asks for, made deliberately: the alternative was
+baking a taste for variety into the reward function to manufacture the effect.
 
 ### δ, the hoardability knob
 
@@ -127,7 +107,8 @@ Fixed at spawn, drawn per agent:
 
 - **Preference vector** `θ_i ∈ R^G`, `θ_i ≥ 0`, from a Dirichlet with a concentration
   knob. Low concentration gives sharply specialized tastes; high gives near-uniform ones.
-  This heterogeneity is the demand-side reason to trade.
+  Under a linear reward this heterogeneity is the *only* demand-side reason to trade,
+  so a high concentration is itself a way to kill the economy.
 - **Production efficiency** `e_i ∈ R^G`. `e_ig` is units of good `g` produced per tick
   of effort. `n_producible` caps how many goods an agent can make at all, zeroing the
   rest. This is load-bearing in a way that is easy to miss: **when every agent can
@@ -139,7 +120,6 @@ Fixed at spawn, drawn per agent:
   correctness property, not a config value, and it is easy to get wrong invisibly.
 - **Mobility** `m_i > 0`. Traversal speed; see transit below.
 - **Sight** `sight_i >= 1`. How many posted prices in its region the agent can see.
-- **Substitution** `ρ`, population-level by default, per-agent optional.
 
 ## Spatial structure
 
@@ -196,10 +176,9 @@ Fully ordered, so the transition is deterministic given actions and RNG draws.
 5. **Match and execute.** Compatible offers execute at the midpoint of the two stated
    ratios — neutral, so neither side's stated ratio sets the price. Quantity is the
    smaller of the two sides.
-6. **Consume.** A full bundle, clipped to inventory. CES utility credited. A bundle
-   rather than one good because CES is defined over a bundle: under complements
-   (`ρ < 0`) consuming a single good is worth exactly zero and that entire regime
-   would be unreachable.
+6. **Consume.** A full bundle, clipped to inventory; `+inf` means "whatever is left".
+   Reward is linear in each good, so only how much of each is eaten matters, never
+   the mix.
 7. **Sinks.** Spoilage `δ_g` applied to all inventories, including in transit.
 8. **Faucets.** Regional resource stocks regenerate toward capacity.
 9. **Anneal.** Token consumption weight stepped per schedule.
@@ -256,7 +235,7 @@ above is a field; none are module constants.
 WorldConfig
   goods, n_agents, seed, gamma
   TopologyConfig     regions, directed_edges, weight, capacity
-  PreferenceConfig   dirichlet_concentration, rho
+  PreferenceConfig   dirichlet_concentration
   ProductionConfig   efficiency_mean, efficiency_scale_spread,
                      efficiency_shape_spread, effort_cost
   MobilityConfig     mobility_mean, mobility_spread, travel_cost_per_tick
@@ -299,7 +278,7 @@ The brief requires the sandbox to be able to fail. Each of these should produce 
 world, and each is a test:
 
 - identical `e_i` shape across agents → no comparative advantage → no trade
-- `ρ → 1` → perfect substitutes → no gains from variety → no trade, no price floor
+- identical `θ` across agents → nothing to gain from exchange → no trade
 - `n_producible = n_goods` → every agent self-sufficient → autarky optimal → no trade
 - all `δ_g` = 0 with unbounded faucets → accumulation without drain
 - all `capacity` = 0 → regions autarkic → no spatial arbitrage

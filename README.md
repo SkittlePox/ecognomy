@@ -107,6 +107,37 @@ to. Edit the dataclass defaults to reach them for now.
 | Concentration | Is anyone cornering a market? |
 | Agent over time | One agent's trajectory — above all the prices it posts, since price formation is the convergence of those lines across agents. |
 
+## Reward
+
+An agent's reward is **the amount of each good it consumed, multiplied by its
+preference for that good**, and nothing else:
+
+```
+reward = Σ (theta[good] × consumed[good])   −  effort cost  −  travel cost
+```
+
+Deliberately linear. Three consequences worth knowing before reading any result:
+
+**A posted price is exact at any quantity**, because a good's value never changes
+with how much you hold. The mechanism requires both sides of a trade to gain, and
+under a linear reward that is a real guarantee — measured across 651 trades, zero
+sides were made worse off. Under a concave reward it was not a guarantee: a price
+computed at the margin, applied to half a holding, approved trades that hurt a
+participant **14.8% of the time**, destroying about a fifth of the gross gains.
+
+**Gains from trade come only from differing preferences**, never from differing
+holdings. Two agents who value goods identically gain nothing by exchanging,
+however lopsided their inventories. A population with uniform tastes is a dead
+world whatever its production arrangement.
+
+**Willingness to pay does not respond to scarcity.** Holding almost none of a
+good does not make an agent want it more, so regional price differences reflect
+*which agents are standing where* rather than local shortage. A chokepoint sorts
+agents between regions; it does not make a good locally dear. This is a real
+change to one of the observables in `handoff.md`, taken deliberately — the
+alternative was building a taste for variety into the reward to manufacture the
+effect, rather than letting effects emerge.
+
 ## The score
 
 Every run reports **total welfare**: realised consumption utility summed over all
@@ -162,7 +193,7 @@ in advance.
 | scenario | agents | tests | solvable by direct exchange |
 |---|---|---|---|
 | `mutual_gains` | 4 | direct exchange — each makes what it does not want, and wants what its neighbour makes | yes |
-| `comparative_advantage` | 2 | specialisation without dependence — both can make both goods | yes |
+| `comparative_advantage` | 2 | specialisation without dependence — each can make both goods, but is better at the one the *other* wants | yes |
 | `triangular` | 3 | **indirect exchange** — wants form a cycle, no pair can trade directly | no |
 | `triangular_with_token` | 5 | **medium of exchange** — the cycle plus a good nobody can eat | no |
 | `autarky` | 2 | negative control — everyone already makes what they want | no |
@@ -174,11 +205,11 @@ capability money needs. Current results:
 
 | scenario | welfare | autarky | gain |
 |---|---|---|---|
-| `mutual_gains` | 682.2 | 30.2 | **+652.0** |
-| `comparative_advantage` | 386.3 | 358.6 | **+27.6** |
+| `mutual_gains` | 251.5 | 16.0 | **+235.5** |
+| `comparative_advantage` | 481.6 | 250.9 | **+230.7** |
 | `triangular` | 0.0 | 0.0 | 0.00 |
 | `triangular_with_token` | 0.0 | 0.0 | 0.00 |
-| `autarky` | 560.3 | 560.3 | 0.00 |
+| `autarky` | 505.2 | 505.2 | 0.00 |
 
 `triangular` has a **positive control**: `RandomPolicy` posts prices unrelated to
 its preferences, so it accepts goods it does not consume, stumbles right around
@@ -243,7 +274,7 @@ positive result would mean anything.
 ```
 ecognomy/
   config.py       every knob, as a dataclass tree
-  utility.py      CES utility
+  utility.py      the reward function
   topology.py     the region graph
   world.py        state arrays and the tick
   actions.py      what agents may do          (swappable)

@@ -109,3 +109,29 @@ def test_welfare_panel_builds_with_and_without_a_baseline(tmp_path):
         data = RunData(out)
         assert data.has("baseline_welfare") is flag
         assert welfare.build(data) is not None
+
+
+def test_command_line_entry_points_run(tmp_path):
+    """The CLI is the way anyone actually starts a run, and nothing else covers
+    it — a stale flag here broke `python -m ecognomy.simulate` while the whole
+    library test suite stayed green.
+    """
+    import subprocess
+    import sys
+
+    out = tmp_path / "cli"
+    for policy in ("myopic", "random"):
+        r = subprocess.run(
+            [sys.executable, "-m", "ecognomy.simulate", "--policy", policy,
+             "--agents", "6", "--ticks", "20", "--out", str(out / policy)],
+            capture_output=True, text=True,
+        )
+        assert r.returncode == 0, r.stderr[-2000:]
+        assert "welfare vs autarky" in r.stdout
+
+    r = subprocess.run(
+        [sys.executable, "-m", "ecognomy.simulate", "--scenario", "mutual_gains",
+         "--ticks", "20", "--out", str(out / "scenario")],
+        capture_output=True, text=True,
+    )
+    assert r.returncode == 0, r.stderr[-2000:]

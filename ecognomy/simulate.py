@@ -31,7 +31,6 @@ def main() -> None:
                    help="random is the control; myopic is rational with no learned parameters")
     p.add_argument("--n-producible", type=int, default=2,
                    help="goods each agent can make at all; equal to n_goods makes autarky optimal")
-    p.add_argument("--kappa", type=float, default=3.0, help="myopic only: value of stock vs utility now")
     p.add_argument("--scenario", choices=sorted(SCENARIOS), default=None,
                    help="run a hand-built diagnostic world instead of a sampled one; "
                         "overrides --agents, --regions and --n-producible")
@@ -40,8 +39,7 @@ def main() -> None:
     p.add_argument("--out", type=str, default=None)
     args = p.parse_args()
 
-    policy = (RandomPolicy() if args.policy == "random"
-              else MyopicPolicy(kappa=args.kappa))
+    policy = RandomPolicy() if args.policy == "random" else MyopicPolicy()
 
     scenario = get_scenario(args.scenario) if args.scenario else None
     if scenario is not None:
