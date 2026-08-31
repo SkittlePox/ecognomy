@@ -94,6 +94,9 @@ never a second y-axis.
 - **Scenario endowments must not smuggle in goods nobody produces.** Endowing
   every agent with a little of everything hands each pair something the other
   wants and destroys `triangular` and `autarky` as controls.
+- **Nothing in the tick may depend on agent index.** Rationing is pro rata and
+  candidate trades are shuffled before sorting, both to stop low ids acquiring a
+  structural advantage. `test_identical_agents_end_up_identical` is the guard.
 - **No published price.** Agents observe only their own trades and the offers
   shown to them. Price formation is the convergence of subjective estimates; a
   global price signal anywhere in the code would destroy the emergence claim.

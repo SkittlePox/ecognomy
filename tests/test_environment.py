@@ -202,6 +202,45 @@ def test_anneal_drives_token_weight_to_target():
     assert start > 0.01 and w.token_weight() == pytest.approx(0.0, abs=1e-6)
 
 
+def test_identical_agents_end_up_identical():
+    """Symmetry invariant, and the sharpest test of fairness in the transition.
+
+    `mutual_gains` holds two interchangeable pairs. If anything in the tick
+    depends on agent index rather than agent state, they diverge — which is
+    exactly what happened: production looped over agents in order, each drawing
+    from the stock the last one left, so once a resource ran short the low-index
+    agents took all of it and the others were starved permanently.
+    """
+    from ecognomy.scenarios import get
+
+    sc = get("mutual_gains")
+    cfg = sc.config()
+    cfg.visibility.sight_mean, cfg.visibility.sight_spread = 20.0, 0.0
+    w = World(cfg, scenario=sc)
+    run(w, MyopicPolicy(), 300)
+
+    assert np.allclose(sc.theta[0], sc.theta[2]) and np.allclose(sc.theta[1], sc.theta[3])
+    assert w.cumulative_reward[0] == pytest.approx(w.cumulative_reward[2], rel=1e-6)
+    assert w.cumulative_reward[1] == pytest.approx(w.cumulative_reward[3], rel=1e-6)
+
+
+def test_scarce_stock_is_shared_not_raced_for():
+    """A shortfall is split pro rata, so no agent is served before another."""
+    cfg = WorldConfig(seed=2, n_agents=6, sink=SinkConfig(spoilage=(0.0,) * 5))
+    cfg.resource.stock_capacity, cfg.resource.regen_rate = 1.0, 0.0
+    w = World(cfg)
+    w.region[:] = 0
+    w.efficiency[:] = 0.0
+    w.efficiency[:, 0] = 2.0          # everyone wants the same scarce good, equally
+    a = Actions.idle(w.n_agents, w.n_goods)
+    a.effort[:, 0] = 1.0
+    w.step(a)
+
+    made = w.last_production[:, 0]
+    assert made.sum() == pytest.approx(1.0, rel=1e-5), "cannot produce more than the stock"
+    assert np.allclose(made, made[0]), f"stock was raced for, not shared: {made}"
+
+
 def test_production_is_gated_by_regional_stock():
     cfg = WorldConfig(seed=8, n_agents=4)
     cfg.resource.stock_capacity, cfg.resource.regen_rate = 0.0, 0.0

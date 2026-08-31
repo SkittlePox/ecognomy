@@ -158,6 +158,13 @@ Fully ordered, so the transition is deterministic given actions and RNG draws.
 2. **Produce.** Effort is a vector: an agent allocates up to one unit of effort across
    goods and receives `effort_g · e_ig` of each, gated by regional stock.
 
+   **A shortfall is shared pro rata**, every claimant scaled by the same factor.
+   Drawing down the stock agent by agent instead makes production
+   first-come-first-served by agent index, which is a permanent advantage to low ids
+   rather than anything economic — it showed up as two interchangeable agents diverging
+   forever the moment a resource ran short. Effort is charged in proportion to what was
+   actually produced, so an agent rationed to nothing pays nothing.
+
    **The environment already allows splitting** — 0.5 apple and 0.5 banana in one tick is
    legal and the transition handles it. `MyopicPolicy` nonetheless puts all its effort on
    one good, and that is correct rather than a limitation: production is *linear* in

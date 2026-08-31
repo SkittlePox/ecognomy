@@ -167,27 +167,53 @@ class World:
                 self.edge[i] = e
 
     def _phase_produce(self, actions: Actions, reward: np.ndarray) -> None:
-        """Create goods from an effort allocation, gated by regional stock.
+        """Create goods from an effort allocation, rationed against regional stock.
 
         Effort is a vector summing to at most one, so an agent may split a tick
         across several goods. This is the one genuinely economic tradeoff the old
-        single-action encoding got right, and it is kept: time is scarce even
-        though posting a price is not.
+        single-action encoding got right: time is scarce even though posting a
+        price is not.
+
+        **When a region's stock cannot meet demand it is shared pro rata**, every
+        claimant scaled by the same factor. The obvious implementation -- loop
+        over agents, each drawing from what the last one left -- makes production
+        first-come-first-served by agent index, which is a permanent structural
+        advantage to low ids rather than anything economic. It showed up as two
+        identical agents diverging forever the moment a resource ran short.
+        Randomising the order would only make the unfairness fluctuate; sharing
+        the shortfall removes it, and is order-independent by construction.
+
+        Effort is charged in proportion to what was actually produced, so an
+        agent rationed down to nothing pays nothing.
         """
-        settled = np.flatnonzero((self.region >= 0) & (actions.effort.sum(axis=1) > 0))
-        for i in settled:
-            r = int(self.region[i])
-            effort = actions.effort[i]
-            want = effort * self.efficiency[i]
-            amount = np.minimum(want, self.stock[r])
-            amount = np.where(amount > 0, amount, 0.0)
-            if amount.sum() <= 0:
-                continue
-            self.stock[r] -= amount
-            self.inventory[i] += amount
-            self.last_production[i] += amount
-            self.goods_created += float(amount.sum())
-            reward[i] -= self.config.production.effort_cost * float(effort.sum())
+        active = (self.region >= 0) & (actions.effort.sum(axis=1) > 0)
+        if not active.any():
+            return
+
+        want = actions.effort.astype(np.float64) * self.efficiency.astype(np.float64)
+        want[~active] = 0.0
+
+        demand = np.zeros_like(self.stock, dtype=np.float64)
+        np.add.at(demand, self.region[active], want[active])
+        with np.errstate(divide="ignore", invalid="ignore"):
+            share = np.where(demand > 1e-12,
+                             np.minimum(1.0, self.stock / np.maximum(demand, 1e-12)), 0.0)
+
+        granted = want * share[np.clip(self.region, 0, None)]
+        granted[~active] = 0.0
+
+        np.subtract.at(self.stock, self.region[active], granted[active])
+        np.clip(self.stock, 0.0, None, out=self.stock)
+
+        self.inventory += granted.astype(np.float32)
+        self.last_production += granted.astype(np.float32)
+        self.goods_created += float(granted.sum())
+
+        with np.errstate(divide="ignore", invalid="ignore"):
+            fulfilled = np.where(want.sum(axis=1) > 1e-12,
+                                 granted.sum(axis=1) / np.maximum(want.sum(axis=1), 1e-12), 0.0)
+        reward -= (self.config.production.effort_cost
+                   * actions.effort.sum(axis=1) * fulfilled).astype(np.float32)
 
     def _phase_consume(self, actions: Actions, reward: np.ndarray) -> None:
         """Voluntary consumption. Nothing forces an agent to eat, which is what
