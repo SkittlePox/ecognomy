@@ -311,10 +311,17 @@ valuation and its ask, so shading the price *is* the markup — and how far to
 shade requires knowing what rivals post, which is the next rung, not this one.
 
 Market access is a drawn capability: **each agent has a different `sight`**, the
-number of posted prices it can see in its region. Correlation between `sight` and
-lifetime welfare is about **+0.42** — agents in the top half of market access
-earn roughly 60% more — so broker and arbitrageur roles have a source other than
-hand-assignment.
+number of posted prices it can see in its region. Seeing more helps, but only
+weakly: rank correlation between `sight` and lifetime welfare is about **+0.12**,
+positive in 12 of 12 seeds, with top-quartile agents earning roughly 1.15x
+bottom-quartile. Use the rank correlation rather than Pearson — `sight` is
+log-normal, and its long tail makes Pearson read near zero (+0.03) while the
+effect is consistently there.
+
+The effect is modest partly because *being seen is as good as seeing*: a pair is
+evaluated if either side drew the other, and about 36% of evaluated pairs exist
+because only one side looked. A low-sight agent that popular agents keep drawing
+still trades plenty.
 
 What the myopic rung still cannot do is hold a good it does not consume. It
 prices such a good at zero, and the mechanism requires strictly positive surplus
