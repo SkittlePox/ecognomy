@@ -101,14 +101,11 @@ class World:
             drawn = vis.sight_mean * np.exp(vis.sight_spread * rng.standard_normal(n))
             self.sight = np.maximum(1, np.rint(drawn)).astype(np.int32)
 
-        # Placement and stocks.
+        # Placement and starting holdings.
         self.region = rng.integers(0, self.topology.n_regions, size=n).astype(np.int32)
         self.edge = np.full(n, -1, dtype=np.int32)
         self.progress = np.zeros(n, dtype=np.float32)
         self.inventory = np.full((n, g), cfg.initial_inventory, dtype=np.float32)
-        self.stock = np.full(
-            (self.topology.n_regions, g), cfg.resource.stock_capacity, dtype=np.float32
-        )
 
     # ----------------------------------------------------------------- tick
 
@@ -125,7 +122,6 @@ class World:
         self.last_trades = self.mechanism.run(self, actions, self.rng)
         self._phase_consume(actions, reward)
         self._phase_spoil()
-        self._phase_regen()
         self._phase_anneal()
 
         self.t += 1
@@ -167,53 +163,30 @@ class World:
                 self.edge[i] = e
 
     def _phase_produce(self, actions: Actions, reward: np.ndarray) -> None:
-        """Create goods from an effort allocation, rationed against regional stock.
+        """Create goods from an effort allocation.
 
         Effort is a vector summing to at most one, so an agent may split a tick
-        across several goods. This is the one genuinely economic tradeoff the old
-        single-action encoding got right: time is scarce even though posting a
-        price is not.
+        across several goods and receives `effort_g * e_ig` of each. This is the
+        one genuinely economic tradeoff in the action space: time is scarce even
+        though posting a price is not.
 
-        **When a region's stock cannot meet demand it is shared pro rata**, every
-        claimant scaled by the same factor. The obvious implementation -- loop
-        over agents, each drawing from what the last one left -- makes production
-        first-come-first-served by agent index, which is a permanent structural
-        advantage to low ids rather than anything economic. It showed up as two
-        identical agents diverging forever the moment a resource ran short.
-        Randomising the order would only make the unfairness fluctuate; sharing
-        the shortfall removes it, and is order-independent by construction.
-
-        Effort is charged in proportion to what was actually produced, so an
-        agent rationed down to nothing pays nothing.
+        Production is limited only by effort and efficiency. There is no shared
+        resource pool to draw down: the drains that stop goods accumulating are
+        consumption and spoilage, both proportional to what is held, so they
+        self-limit without a cap on the faucet.
         """
         active = (self.region >= 0) & (actions.effort.sum(axis=1) > 0)
         if not active.any():
             return
 
-        want = actions.effort.astype(np.float64) * self.efficiency.astype(np.float64)
-        want[~active] = 0.0
+        made = actions.effort.astype(np.float64) * self.efficiency.astype(np.float64)
+        made[~active] = 0.0
 
-        demand = np.zeros_like(self.stock, dtype=np.float64)
-        np.add.at(demand, self.region[active], want[active])
-        with np.errstate(divide="ignore", invalid="ignore"):
-            share = np.where(demand > 1e-12,
-                             np.minimum(1.0, self.stock / np.maximum(demand, 1e-12)), 0.0)
-
-        granted = want * share[np.clip(self.region, 0, None)]
-        granted[~active] = 0.0
-
-        np.subtract.at(self.stock, self.region[active], granted[active])
-        np.clip(self.stock, 0.0, None, out=self.stock)
-
-        self.inventory += granted.astype(np.float32)
-        self.last_production += granted.astype(np.float32)
-        self.goods_created += float(granted.sum())
-
-        with np.errstate(divide="ignore", invalid="ignore"):
-            fulfilled = np.where(want.sum(axis=1) > 1e-12,
-                                 granted.sum(axis=1) / np.maximum(want.sum(axis=1), 1e-12), 0.0)
+        self.inventory += made.astype(np.float32)
+        self.last_production += made.astype(np.float32)
+        self.goods_created += float(made.sum())
         reward -= (self.config.production.effort_cost
-                   * actions.effort.sum(axis=1) * fulfilled).astype(np.float32)
+                   * actions.effort.sum(axis=1) * active).astype(np.float32)
 
     def _phase_consume(self, actions: Actions, reward: np.ndarray) -> None:
         """Voluntary consumption. Nothing forces an agent to eat, which is what
@@ -235,11 +208,6 @@ class World:
         lost = self.inventory * delta
         self.inventory -= lost
         self.goods_destroyed += float(lost.sum())
-
-    def _phase_regen(self) -> None:
-        cap, rate = self.config.resource.stock_capacity, self.config.resource.regen_rate
-        self.stock += rate * (cap - self.stock)
-        np.clip(self.stock, 0.0, cap, out=self.stock)
 
     def _phase_anneal(self) -> None:
         """Drive the token's consumption weight toward `anneal_end`.

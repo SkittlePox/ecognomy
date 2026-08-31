@@ -63,14 +63,6 @@ class MobilityConfig:
 
 
 @dataclass
-class ResourceConfig:
-    """Regional stocks that gate production. The faucet."""
-
-    stock_capacity: float = 20.0
-    regen_rate: float = 0.05  # fraction of the gap to capacity, per tick
-
-
-@dataclass
 class VisibilityConfig:
     """How much of a region's posted board each agent can see.
 
@@ -154,7 +146,6 @@ class WorldConfig:
     preference: PreferenceConfig = field(default_factory=PreferenceConfig)
     production: ProductionConfig = field(default_factory=ProductionConfig)
     mobility: MobilityConfig = field(default_factory=MobilityConfig)
-    resource: ResourceConfig = field(default_factory=ResourceConfig)
     market: MarketConfig = field(default_factory=MarketConfig)
     visibility: VisibilityConfig = field(default_factory=VisibilityConfig)
     token: TokenConfig = field(default_factory=TokenConfig)

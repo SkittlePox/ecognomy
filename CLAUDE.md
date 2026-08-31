@@ -10,6 +10,25 @@ falls out.
 - `docs/environment.md` — the environment specification. The formal object, the
   tick phase order, every knob. Code follows this; if they disagree, the spec is
   wrong or the code is, and one of them needs fixing.
+- `docs/decisions.md` — **the ledger.** Every choice that shapes the world and
+  where it came from: the brief, an explicit decision, or an assumption made to
+  keep moving. Read it before changing anything about the world.
+
+## Do not let the model and the collaborator drift apart
+
+**Never add a mechanism to the world without saying so explicitly and adding a
+row to `docs/decisions.md`.** Not a passing mention inside a longer message — a
+statement that a choice is being made, and what its consequences are.
+
+This rule exists because a regional resource pool was introduced with one
+parenthetical aside, and then silently capped production at ~46% of what agents
+attempted and drove the correlation between production skill and welfare to
++0.003 for an entire working session. It was found only because two agents that
+should have been identical visibly diverged in the UI. Anything discovered that
+way was undiscovered for a long time first.
+
+A row marked `assumed` in the ledger is an open question, not a settled decision.
+Surface them; do not let them ratify themselves by sitting in the code.
 
 Both are design documents, not build instructions, and they age differently from
 the code. Keep them updated rather than duplicating them inline.
@@ -112,9 +131,12 @@ The dashboard is built. The step-by-step world panel is the main instrument:
 locations, ground truth per agent, per-region price boards, recorded who-saw-whom,
 and executed trades. Summary panels sit around it.
 
-Open, in rough order: the planner (rollout depth, candidate proposal), the
-control panel that writes a `WorldConfig` and launches a run, and whether
-production draws down regional stock at the right rate.
+Open, in rough order: the `assumed` rows in `docs/decisions.md` (unratified
+choices sitting in the code), the planner, and the control panel that writes a
+`WorldConfig` and launches a run.
+
+Two things `handoff.md` asks for that do not exist yet: **recipes** (goods
+composing into other goods) and **taxes and redistribution**.
 
 Not yet verified: the chokepoint price wedge. `prices.py` is written to show it,
 but random play trades too thinly to estimate regional prices, so it needs a real

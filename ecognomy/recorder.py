@@ -36,7 +36,6 @@ class RunRecorder:
         self.region: list[np.ndarray] = []
         self.edge: list[np.ndarray] = []
         self.reward: list[np.ndarray] = []
-        self.stock: list[np.ndarray] = []
         self.price: list[np.ndarray] = []
         self.consume: list[np.ndarray] = []
         self.effort: list[np.ndarray] = []
@@ -64,7 +63,6 @@ class RunRecorder:
         self.region.append(w.region.copy())
         self.edge.append(w.edge.copy())
         self.reward.append(w.last_reward.copy())
-        self.stock.append(w.stock.copy())
         a = w.last_actions
         self.price.append(a.price.copy())
         self.consume.append(a.consume.copy())
@@ -108,7 +106,6 @@ class RunRecorder:
             "snap_region": np.stack(self.region) if self.region else np.zeros((0,)),
             "snap_edge": np.stack(self.edge) if self.edge else np.zeros((0,)),
             "snap_reward": np.stack(self.reward) if self.reward else np.zeros((0,)),
-            "snap_stock": np.stack(self.stock) if self.stock else np.zeros((0,)),
             "snap_price": np.stack(self.price) if self.price else np.zeros((0,)),
             "snap_consume": np.stack(self.consume) if self.consume else np.zeros((0,)),
             "snap_effort": np.stack(self.effort) if self.effort else np.zeros((0,)),

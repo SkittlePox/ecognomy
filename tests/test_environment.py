@@ -224,36 +224,6 @@ def test_identical_agents_end_up_identical():
     assert w.cumulative_reward[1] == pytest.approx(w.cumulative_reward[3], rel=1e-6)
 
 
-def test_scarce_stock_is_shared_not_raced_for():
-    """A shortfall is split pro rata, so no agent is served before another."""
-    cfg = WorldConfig(seed=2, n_agents=6, sink=SinkConfig(spoilage=(0.0,) * 5))
-    cfg.resource.stock_capacity, cfg.resource.regen_rate = 1.0, 0.0
-    w = World(cfg)
-    w.region[:] = 0
-    w.efficiency[:] = 0.0
-    w.efficiency[:, 0] = 2.0          # everyone wants the same scarce good, equally
-    a = Actions.idle(w.n_agents, w.n_goods)
-    a.effort[:, 0] = 1.0
-    w.step(a)
-
-    made = w.last_production[:, 0]
-    assert made.sum() == pytest.approx(1.0, rel=1e-5), "cannot produce more than the stock"
-    assert np.allclose(made, made[0]), f"stock was raced for, not shared: {made}"
-
-
-def test_production_is_gated_by_regional_stock():
-    cfg = WorldConfig(seed=8, n_agents=4)
-    cfg.resource.stock_capacity, cfg.resource.regen_rate = 0.0, 0.0
-    w = World(cfg)
-    w.region[:] = 0
-    a = Actions.idle(w.n_agents, w.n_goods)
-    a.effort[:, 0] = 1.0
-    w.step(a)
-    assert w.last_production.sum() == 0.0
-
-
-# ------------------------------------------------------- failure modes
-
 def test_failure_no_comparative_advantage():
     """shape_spread == 0 gives every agent the same ranking over goods."""
     cfg = WorldConfig(seed=2, production=ProductionConfig(shape_spread=0.0, scale_spread=0.5))
@@ -285,20 +255,6 @@ def test_failure_isolated_regions_prevent_movement():
     start = w.region.copy()
     run(w, RandomPolicy(), 100)
     assert (w.region == start).all(), "no edges means no agent may ever relocate"
-
-
-def test_failure_no_drain_accumulates_without_bound():
-    """A faucet with no sink only ever accumulates -- the classic homebrew failure."""
-    cfg = WorldConfig(seed=6, sink=SinkConfig(spoilage=(0.0,) * 5))
-    cfg.resource.regen_rate = 1.0
-    w = World(cfg)
-    a = Actions.idle(w.n_agents, w.n_goods)
-    a.effort[:, 0] = 1.0
-    stock = []
-    for _ in range(50):
-        w.step(a)
-        stock.append(w.inventory.sum())
-    assert stock[-1] > stock[0] * 5, "with no spoilage and no consumption, goods must pile up"
 
 
 def test_random_play_does_not_produce_an_economy():

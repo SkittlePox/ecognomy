@@ -130,7 +130,6 @@ def test_world_view_snapshots_cover_every_agent_and_tick(run):
     for key in ("snap_region", "snap_price", "snap_consume", "snap_effort",
                 "snap_reward", "snap_edge"):
         assert run[key].shape[:2] == (n_snaps, run.n_agents), key
-    assert run["snap_stock"].shape == (n_snaps, run.n_regions, len(run.goods))
     assert run["snap_move"].shape == (n_snaps, run.n_agents)
 
 

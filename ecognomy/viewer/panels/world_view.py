@@ -187,10 +187,9 @@ def register(app, data):
         rows = log[log[:, 0] == tick] if log.size else np.zeros((0, 9))
         traded = set(int(r[1]) for r in rows) | set(int(r[2]) for r in rows)
 
-        stocks = data["snap_stock"][s] if data.has("snap_stock") else None
         max_trade = data["snap_max_trade"][s] if data.has("snap_max_trade") else np.zeros_like(inv)
         boards = [_board(data, r, region, price, effort, consume, inv, seen, focus, traded,
-                         stocks[r] if stocks is not None else None, max_trade)
+                         max_trade)
                   for r in range(data.n_regions)]
         boards.append(_transit_card(region, edge))
 
@@ -206,9 +205,8 @@ def register(app, data):
                 ]))
 
     def _board(data, r, region, price, effort, consume, inv, seen, focus, traded,
-               stock, max_trade):
-        """One region: who is here, what it has left to draw on, and the full
-        posting of everyone present.
+               max_trade):
+        """One region: who is here, and the full posting of everyone present.
 
         A posting is two things, and both belong here: the **price** it asks for
         each good, and **how much** of each it will actually part with. A price
@@ -253,8 +251,6 @@ def register(app, data):
             else html.Div("empty", style={"fontSize": "11px", "color": P["text_muted"]})
 
         subtitle = "price levels are per-agent and only ratios matter"
-        if stock is not None:
-            subtitle += "   ·   stock " + _vec(stock, 1)
         return html.Div([
             html.Div(f"region {r}  ·  {len(here)} agent{'s' if len(here) != 1 else ''}",
                      style={"fontSize": "12px", "fontWeight": 600,

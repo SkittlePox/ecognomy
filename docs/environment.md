@@ -156,14 +156,11 @@ Fully ordered, so the transition is deterministic given actions and RNG draws.
 1. **Transit.** Advance in-transit agents by `m_i`; arrivals enter their destination.
    New traversals admitted if edge capacity allows, else refused. Travel cost charged.
 2. **Produce.** Effort is a vector: an agent allocates up to one unit of effort across
-   goods and receives `effort_g · e_ig` of each, gated by regional stock.
+   goods and receives `effort_g · e_ig` of each.
 
-   **A shortfall is shared pro rata**, every claimant scaled by the same factor.
-   Drawing down the stock agent by agent instead makes production
-   first-come-first-served by agent index, which is a permanent advantage to low ids
-   rather than anything economic — it showed up as two interchangeable agents diverging
-   forever the moment a resource ran short. Effort is charged in proportion to what was
-   actually produced, so an agent rationed to nothing pays nothing.
+   Production is limited only by effort and efficiency. There is no shared resource
+   pool: the drains that stop goods accumulating are consumption and spoilage, both
+   proportional to what is held, so they self-limit without a cap on the faucet.
 
    **The environment already allows splitting** — 0.5 apple and 0.5 banana in one tick is
    legal and the transition handles it. `MyopicPolicy` nonetheless puts all its effort on
@@ -187,7 +184,6 @@ Fully ordered, so the transition is deterministic given actions and RNG draws.
    Reward is linear in each good, so only how much of each is eaten matters, never
    the mix.
 7. **Sinks.** Spoilage `δ_g` applied to all inventories, including in transit.
-8. **Faucets.** Regional resource stocks regenerate toward capacity.
 9. **Anneal.** Token consumption weight stepped per schedule.
 10. **Record.** Metrics appended.
 
@@ -196,7 +192,7 @@ Fully ordered, so the transition is deterministic given actions and RNG draws.
 Enumerated so the balance is auditable — the brief flags this as where homebrew
 economies usually fail.
 
-**Faucets:** production (gated by regional stock), regeneration of that stock.
+**Faucets:** production.
 
 **Sinks:** consumption, spoilage `δ_g`, travel cost (utility), production effort (utility).
 
@@ -222,7 +218,7 @@ this is the seam that keeps action spaces swappable. In-transit agents have only
 
 ```
 MOVE(region)              out-neighbors of current region, capacity permitting
-PRODUCE(good)             goods with e_ig > 0 and regional stock available
+PRODUCE(good)             goods with e_ig > 0
 CONSUME(good, qty)        voluntary, continuous quantity
 OFFER(give, want, ratio)  give ∈ goods held, want ∈ goods, ratio solved not enumerated
 ACCEPT(offer)             offers exposed this tick
@@ -246,7 +242,6 @@ WorldConfig
   ProductionConfig   efficiency_mean, efficiency_scale_spread,
                      efficiency_shape_spread, effort_cost
   MobilityConfig     mobility_mean, mobility_spread, travel_cost_per_tick
-  ResourceConfig     stock_capacity, regen_rate
   MarketConfig       K, execution_rule
   TokenConfig        token_good, anneal_start, anneal_end, anneal_schedule
   SinkConfig         spoilage[g]

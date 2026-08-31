@@ -5,8 +5,10 @@ stipulated. You sit in the designer's chair: turn knobs on the world, run it, an
 watch what falls out — division of labour, trade, price formation, and ideally a
 medium of exchange nobody hardcoded.
 
-The design documents are [`handoff.md`](handoff.md) (what it's for) and
-[`docs/environment.md`](docs/environment.md) (the environment, formally).
+The design documents are [`handoff.md`](handoff.md) (what it's for),
+[`docs/environment.md`](docs/environment.md) (the environment, formally), and
+[`docs/decisions.md`](docs/decisions.md) (every choice that shapes the world and
+where it came from).
 
 ## Setup
 

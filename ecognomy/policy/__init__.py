@@ -6,7 +6,7 @@ package, and a policy never mutates state.
 The ladder, in order of what each rung needs to know:
 
     RandomPolicy   nothing                      -- the control
-    MyopicPolicy   its own preferences + stock  -- rational, no learned parameters
+    MyopicPolicy   its own preferences + holdings  -- rational, nothing learned
 
 Rungs above these are not built yet:
 

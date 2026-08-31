@@ -12,8 +12,8 @@ of the world rather than of a hand-set constant.
                value, so offering the lot can only improve the basket.
     consume    whatever survives trading. A good is worth the same now as later
                while spoilage taxes holding it, so waiting is never better.
-    effort     all of it on the good with the highest value x yield, since
-               production is linear in effort and the optimum is a corner.
+    effort     all of it on the good with the highest preference x efficiency,
+               since production is linear in effort and the optimum is a corner.
 
 What this rung structurally cannot do:
 
@@ -56,9 +56,7 @@ class MyopicPolicy:
         # Clipped to inventory by the world, after trading has resolved.
         actions.consume = np.full((n, g), np.inf, dtype=np.float32)
 
-        stock = world.stock[np.clip(world.region, 0, None)]
-        value = world.theta.astype(np.float64) * np.minimum(
-            world.efficiency.astype(np.float64), stock)
+        value = world.theta.astype(np.float64) * world.efficiency.astype(np.float64)
         best = np.argmax(value, axis=1)
         rows = np.arange(n)
         worth_it = value[rows, best] > world.config.production.effort_cost
