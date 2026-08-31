@@ -28,14 +28,15 @@ bad way to find things.
 |---|---|---|---|
 | Goods, alphanumeric names | apple…elderberry | agreed | asked for by name |
 | Number of goods | 5 | assumed | 4 ordinary + 1 token candidate |
-| **Recipes / goods composing into other goods** | **not built** | brief | `handoff.md` asks for "what goods exist — and how they compose into recipes". There is no production chain: every good is made from effort alone. |
-| **Taxes and redistribution** | **not built** | brief | `handoff.md` lists it as a first-class knob. Nothing implements it. |
+| Recipes / goods composing into other goods | **deferred** | agreed | in the brief; ruled "not yet, maybe in the future". Every good is made from effort alone. |
+| Taxes and redistribution | **deferred** | agreed | in the brief; ruled "may come later". |
 | Reward = consumption × preference, linear | — | agreed | chosen over concave after measuring 14.8% of trade sides losing utility |
 | Preference vector θ per agent | Dirichlet | brief | "heterogeneous across the population" |
-| Dirichlet concentration | 0.6 | assumed | sets how specialised tastes are; under linear reward this is the *only* source of gains from trade |
+| Dirichlet concentration | 0.6 | assumed | sets how specialised tastes are; under linear reward this is one of only two sources of gains from trade |
+| `shape_spread` — how differently agents are good at things | **1.0** | **assumed** | The brief says "spread this distribution wide". At the current default the economy is near-autarkic: gain over autarky is only **+29 (×1.02)**, 64% of agents helped, because agents can make what they want themselves. At `2.0` it is **+234 (×1.11)**, 86% helped, and total welfare is higher too. **Worth ruling on** — this now carries the weight `n_producible` was carrying, but as a spread rather than a restriction. |
 | Production efficiency per agent | lognormal | brief | "who is good at what… spread this distribution wide" |
-| `n_producible` — each agent can make only its best k goods | **2** | **assumed** | Not in the brief. Forces dependence rather than letting specialisation emerge. With all 5 producible, autarky is optimal and nobody trades — so this is doing a lot of work. |
-| `effort_cost` — a cost per tick of production | 0.02 | assumed | brief says "production costs", which efficiency already expresses; this is a second, separate cost |
+| Every agent can make every good | — | **agreed** | ruled: `n_producible` removed. An agent spreads a fixed effort budget over whichever goods it likes; specialisation is its choice, not a restriction. The measurement that motivated the cap ("autarky is optimal if you can make everything") was taken under the one-action-per-tick encoding, where offering competed with producing. It does not survive: with no cap, welfare is the *highest* of any setting. |
+| `effort_cost` — utility charged per unit of effort | 0.02 | **agreed** | ruled: keep. It is the threshold below which producing is not worth the bother — a myopic agent makes good *g* only when `theta_g × e_ig` clears it. Without it, an agent always produces something however worthless. A *utility* sink, distinct from efficiency. |
 | Spoilage per good | 0.02, token 0.005 | **assumed** | brief asks for sinks. Making the **token more durable than everything else** is my choice, and it gives the token a volume head start unrelated to anything monetary. |
 | Initial inventory | 1.0 of each good | assumed | |
 | **Regional resource stock** | **removed** | assumed | Added by me, capped production at ~46% of attempted and drove comparative-advantage correlation to +0.003. Removed on request. |
@@ -61,7 +62,7 @@ bad way to find things.
 | Postings normalised before ranking | max = 1 | assumed | closes an exploit where posting bigger numbers bought queue priority |
 | Candidates filled greedily by joint surplus | — | assumed | not welfare-optimal; a solver would be an auctioneer, which was rejected |
 | Per-agent `sight`, each agent a different K | lognormal | agreed | "Each agent has a different K!" |
-| Seeing is symmetric for matching | — | **assumed** | a pair is evaluated if **either** side drew the other, so being seen is as good as seeing. ~36% of evaluated pairs exist because only one side looked. |
+| Seeing is symmetric for matching | — | **agreed** | ruled: good as is. A pair is evaluated if **either** side drew the other, so being seen is as good as seeing; ~36% of evaluated pairs exist because only one side looked. This is why `sight` is a weak predictor of welfare (rank correlation +0.12). |
 | An agent may trade several times per tick | — | assumed | against a price it posted once, before those trades happened |
 
 ## Agents

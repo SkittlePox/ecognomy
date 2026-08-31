@@ -24,13 +24,16 @@ def main() -> None:
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--sight-mean", type=float, default=3.0,
                    help="average number of a region's posted prices an agent sees (search friction)")
+    p.add_argument("--shape-spread", type=float, default=None,
+                   help="how differently agents are good at things; wider means more "
+                        "comparative advantage and more reason to trade")
+    p.add_argument("--concentration", type=float, default=None,
+                   help="Dirichlet concentration on tastes; lower means sharper preferences")
     p.add_argument("--sight-spread", type=float, default=0.6,
                    help="dispersion in market access; 0 gives every agent the same K")
     p.add_argument("--anneal-ticks", type=int, default=0, help="0 disables the token anneal")
     p.add_argument("--policy", choices=("random", "myopic"), default="myopic",
                    help="random is the control; myopic is rational with no learned parameters")
-    p.add_argument("--n-producible", type=int, default=2,
-                   help="goods each agent can make at all; equal to n_goods makes autarky optimal")
     p.add_argument("--scenario", choices=sorted(SCENARIOS), default=None,
                    help="run a hand-built diagnostic world instead of a sampled one; "
                         "overrides --agents, --regions and --n-producible")
@@ -51,7 +54,10 @@ def main() -> None:
         cfg = WorldConfig(
             n_agents=args.agents, seed=args.seed, topology=Topology.line(args.regions)
         )
-        cfg.production.n_producible = args.n_producible
+    if args.shape_spread is not None:
+        cfg.production.shape_spread = args.shape_spread
+    if args.concentration is not None:
+        cfg.preference.dirichlet_concentration = args.concentration
     cfg.visibility.sight_mean = args.sight_mean
     cfg.visibility.sight_spread = args.sight_spread
     cfg.token.anneal_ticks = args.anneal_ticks

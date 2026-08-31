@@ -44,13 +44,13 @@ class ProductionConfig:
     efficiency_mean: float = 1.0
     scale_spread: float = 0.3
     shape_spread: float = 1.0
+    # Utility charged per unit of effort spent producing, so production is not
+    # free. It is the threshold below which making something is not worth the
+    # bother: a myopic agent produces good g only when `theta_g * e_ig` clears
+    # it. Without it an agent always produces something, however worthless.
+    # This is a *utility* sink, distinct from efficiency, which is the brief's
+    # "who is good at what".
     effort_cost: float = 0.02
-    # How many goods an agent can produce at all. When every agent can make
-    # every good, autarky is optimal and trade never becomes necessary -- only
-    # advantageous, and a myopic agent will always prefer producing a good to
-    # trading for it because production is certain and trade captures only the
-    # markup. None means no restriction.
-    n_producible: int | None = 2
 
 
 @dataclass

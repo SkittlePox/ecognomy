@@ -110,11 +110,9 @@ Fixed at spawn, drawn per agent:
   Under a linear reward this heterogeneity is the *only* demand-side reason to trade,
   so a high concentration is itself a way to kill the economy.
 - **Production efficiency** `e_i ∈ R^G`. `e_ig` is units of good `g` produced per tick
-  of effort. `n_producible` caps how many goods an agent can make at all, zeroing the
-  rest. This is load-bearing in a way that is easy to miss: **when every agent can
-  produce every good, autarky is optimal** and trade never becomes necessary, only
-  advantageous. **Comparative advantage additionally requires `e_i` to vary in relative,
-  not absolute terms** — an agent uniformly worse at everything still has a comparative advantage in
+  of effort. **Every agent can make every good**, so specialisation is a choice an
+  agent makes by where it puts its effort, never a restriction imposed on it.
+  **Comparative advantage requires `e_i` to vary in relative, not absolute terms** — an agent uniformly worse at everything still has a comparative advantage in
   something. The sampler must vary the *shape* of `e_i`, not just its scale, or there
   are no gains from trade and no other setting can rescue the economy. This is a sampler
   correctness property, not a config value, and it is easy to get wrong invisibly.
@@ -281,7 +279,6 @@ world, and each is a test:
 
 - identical `e_i` shape across agents → no comparative advantage → no trade
 - identical `θ` across agents → nothing to gain from exchange → no trade
-- `n_producible = n_goods` → every agent self-sufficient → autarky optimal → no trade
 - all `δ_g` = 0 with unbounded faucets → accumulation without drain
 - all `capacity` = 0 → regions autarkic → no spatial arbitrage
 - `sight_mean` = 0 → no agent sees any other → no trade regardless of every other setting

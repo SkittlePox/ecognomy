@@ -120,10 +120,15 @@ def test_more_sight_does_not_reduce_trade():
     assert trades(12) >= trades(1)
 
 
-def test_sparse_production_forces_dependence():
-    """n_producible caps how many goods an agent can make at all. When everyone
-    can make everything, autarky is optimal and trade is never necessary."""
-    w = _world(n_producible=2)
-    producible = (w.efficiency > 0).sum(axis=1)
-    assert (producible <= 2).all()
-    assert (producible >= 1).all(), "every agent must be able to make something"
+def test_every_agent_can_make_every_good():
+    """Nothing caps which goods an agent may attempt.
+
+    An agent spreads a fixed budget of effort over whichever goods it likes, so
+    specialisation is a choice it makes rather than a restriction imposed on it.
+    An earlier version capped each agent to its best two goods, which forced
+    dependence and put a heavy thumb on the scale for trade happening at all.
+    """
+    w = _world()
+    assert (w.efficiency > 0).all(), "no agent may be locked out of a good"
+    assert w.efficiency.max(axis=1).mean() > w.efficiency.min(axis=1).mean(), \
+        "efficiencies must still vary within an agent, or there is no specialisation"

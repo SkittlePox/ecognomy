@@ -80,14 +80,17 @@ leaves the charts sparse. This one has enough activity to fill them:
 | `--sight-spread` | 0.6 | dispersion in market access. **Each agent has a different K.** `0` makes everyone equal. |
 | `--anneal-ticks` | 0 | ticks over which the token's intrinsic value decays to zero. `0` disables it. |
 | `--policy` | myopic | `random` is the control; `myopic` is rational with no learned parameters. |
-| `--n-producible` | 2 | goods each agent can make at all. Setting this to the number of goods makes autarky optimal and kills trade. |
 
-Effort is a vector, so **splitting a tick across goods is legal** — 0.5 apple and
-0.5 banana is a valid action. The myopic policy still goes all-in on one good,
-and that is correct: production is linear in effort within a tick, so splitting
-never beats the best single good. Making a split rational needs diminishing
-returns inside the tick (`effort^β`, β < 1), which is a one-line change to the
-produce phase and deliberately not made yet.
+**Every agent can make every good**, at its own efficiency. Effort is a vector,
+so an agent spreads a fixed budget over whichever goods it likes — 0.5 apple and
+0.5 banana is a valid action — and specialisation is a choice it makes rather
+than a restriction imposed on it.
+
+The myopic policy still goes all-in on one good, and that is correct: production
+is linear in effort within a tick, so splitting never beats the best single good.
+Making a split rational needs diminishing returns inside the tick (`effort^β`,
+β < 1), which is a one-line change to the produce phase and deliberately not
+made yet.
 | `--kappa` | 3.0 | myopic only: value of stock in hand against utility now. Above 1 patient, below 1 impatient. |
 | `--out` | timestamped | where to write the run |
 

@@ -58,7 +58,6 @@ class Scenario:
             sink=SinkConfig(spoilage=tuple([0.01] * self.n_goods)),
             token=TokenConfig(token_good=self.n_goods - 1),
         )
-        cfg.production.n_producible = None  # the scenario sets efficiency directly
         for key, value in overrides.items():
             head, _, tail = key.partition("__")
             if tail:

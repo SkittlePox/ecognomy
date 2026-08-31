@@ -77,14 +77,11 @@ class World:
         scale = np.exp(cfg.production.scale_spread * rng.standard_normal((n, 1)))
         shape = np.exp(cfg.production.shape_spread * rng.standard_normal((n, g)))
         shape /= shape.mean(axis=1, keepdims=True)
-        efficiency = cfg.production.efficiency_mean * scale * shape
-        k = cfg.production.n_producible
-        if k is not None and k < g:
-            # Keep each agent's top-k goods and zero the rest, so most goods
-            # must be obtained from someone else rather than made.
-            cutoff = np.partition(efficiency, g - k, axis=1)[:, g - k][:, None]
-            efficiency = np.where(efficiency >= cutoff, efficiency, 0.0)
-        self.efficiency = efficiency.astype(np.float32)
+        # Every agent can make every good, at its own efficiency. Nothing caps
+        # which goods an agent may attempt: it spreads a fixed budget of effort
+        # over whichever it likes, and specialisation is a choice it makes rather
+        # than a restriction imposed on it.
+        self.efficiency = (cfg.production.efficiency_mean * scale * shape).astype(np.float32)
 
         self.mobility = np.maximum(
             cfg.mobility.mobility_mean * np.exp(cfg.mobility.mobility_spread * rng.standard_normal(n)),
