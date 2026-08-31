@@ -112,6 +112,9 @@ Fixed at spawn, drawn per agent:
 - **Production efficiency** `e_i ∈ R^G`. `e_ig` is units of good `g` produced per tick
   of effort. **Every agent can make every good**, so specialisation is a choice an
   agent makes by where it puts its effort, never a restriction imposed on it.
+  Since nobody is locked out of any good, `shape_spread` carries most of the reason to
+  trade — agents gain from exchange only when they differ sharply in what they are good
+  at, which is why the brief asks for this distribution to be spread wide.
   **Comparative advantage requires `e_i` to vary in relative, not absolute terms** — an agent uniformly worse at everything still has a comparative advantage in
   something. The sampler must vary the *shape* of `e_i`, not just its scale, or there
   are no gains from trade and no other setting can rescue the economy. This is a sampler

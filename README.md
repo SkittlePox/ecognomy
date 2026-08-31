@@ -78,6 +78,8 @@ leaves the charts sparse. This one has enough activity to fill them:
 | `--seed` | 0 | RNG seed |
 | `--sight-mean` | 3 | average number of a region's posted prices an agent can see — the **search-friction knob**. Low values give persistent price dispersion and durable arbitrage; high values approach a frictionless market. `0` disables the market. |
 | `--sight-spread` | 0.6 | dispersion in market access. **Each agent has a different K.** `0` makes everyone equal. |
+| `--shape-spread` | 2.0 | how differently agents are good at things. Since every agent can make every good, this carries most of the reason to trade — at 1.0 the world goes near-autarkic. |
+| `--concentration` | 0.6 | Dirichlet concentration on tastes; lower means sharper preferences. |
 | `--anneal-ticks` | 0 | ticks over which the token's intrinsic value decays to zero. `0` disables it. |
 | `--policy` | myopic | `random` is the control; `myopic` is rational with no learned parameters. |
 
@@ -85,6 +87,13 @@ leaves the charts sparse. This one has enough activity to fill them:
 so an agent spreads a fixed budget over whichever goods it likes — 0.5 apple and
 0.5 banana is a valid action — and specialisation is a choice it makes rather
 than a restriction imposed on it.
+
+Because nobody is locked out of anything, **`--shape-spread` carries most of the
+reason to trade**: agents only gain from exchange when they differ sharply in
+what they are good at. The brief asks for this distribution to be spread wide,
+and the default of 2.0 reflects that. At 1.0 the sampled world goes near-autarkic
+— gain over autarky +29 (x1.02), 64% of agents helped, against +234 (x1.11) and
+86% at 2.0.
 
 The myopic policy still goes all-in on one good, and that is correct: production
 is linear in effort within a tick, so splitting never beats the best single good.

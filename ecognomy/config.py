@@ -43,7 +43,13 @@ class ProductionConfig:
 
     efficiency_mean: float = 1.0
     scale_spread: float = 0.3
-    shape_spread: float = 1.0
+    # How differently agents are good at things. This is the brief's "spread this
+    # distribution wide", and it carries most of the reason to trade: since every
+    # agent can make every good, trade is worth doing only when agents differ
+    # sharply in what they are good at. At 1.0 the sampled world is near-autarkic
+    # (gain over autarky +29, x1.02, 64% of agents helped); at 2.0 it is +234,
+    # x1.11, 86% helped, with higher total welfare as well.
+    shape_spread: float = 2.0
     # Utility charged per unit of effort spent producing, so production is not
     # free. It is the threshold below which making something is not worth the
     # bother: a myopic agent produces good g only when `theta_g * e_ig` clears
