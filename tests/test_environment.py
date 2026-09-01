@@ -11,6 +11,7 @@ import numpy as np
 import pytest
 
 from ecognomy.actions import NO_MOVE, Actions
+from ecognomy.baseline import compare
 from ecognomy.config import PreferenceConfig, ProductionConfig, SinkConfig, VisibilityConfig, WorldConfig
 from ecognomy.mechanism import BilateralMechanism
 from ecognomy.policy import MyopicPolicy, RandomPolicy, run
@@ -334,10 +335,43 @@ def test_failure_isolated_regions_prevent_movement():
 def test_random_play_does_not_produce_an_economy():
     """The double coincidence of wants must actually bite.
 
-    Random offers should almost never match. If they do, matching is too
-    permissive and any later 'emergence' would be an artifact of the mechanism.
+    This used to assert that random play trades fewer than `n_agents` times per
+    tick. That bound measured the `argmax` as much as the matching rule: it was
+    calibrated when a meeting could yield only one trade, and with every crossing
+    entering the queue an agent may legitimately make several swaps per meeting.
+    Random play went from 18 to 48 trades a tick on that change alone.
+
+    Trading often is not the failure being guarded against. The failure is random
+    play producing a *working economy*, and more trade moves it further from one,
+    not closer: its gain over its own autarky counterfactual falls from -21 to
+    -47, because incoherent postings cross easily and the trades they cross into
+    are the ones that lose you goods. Meanwhile rational play improves, +237 to
+    +253 with every agent helped rather than 95% of them. The discrimination the
+    guard exists to protect gets sharper, not weaker.
+
+    So it is now stated as what it always meant, and no longer through a proxy
+    that was entangled with the mechanism it was meant to check.
+
+    Of the two clauses the **second** is the one that bites. Random play cannot
+    build an economy under a linear reward whatever the matching rule, since its
+    postings are uncorrelated with its preferences -- that clause states the
+    claim but is insensitive to how permissive matching is. Rational trade
+    frequency is sensitive, measured against `min_depth`:
+
+        min_depth   myopic gain   myopic trades/tick
+             1.0         +253.0                 3.57
+             0.5          +52.0                10.79
+             0.2         -617.2                22.71
+
+    A mechanism loose enough to match anything does not merely let random play
+    through; it destroys rational play, because an agent gets traded into swaps
+    it did not want. The frequency bound catches that at min_depth 0.5, well
+    before the welfare collapse.
     """
+    c = compare(WorldConfig(seed=1), RandomPolicy(), 300)
+    assert c.gain < 0, f"random play built an economy: {c.gain:+.1f} over autarky"
+
     w = World(WorldConfig(seed=1))
-    m = run(w, RandomPolicy(), 300)
-    trades_per_tick = m.summary()["total_trades"] / 300
-    assert trades_per_tick < w.n_agents, f"random play traded too easily: {trades_per_tick}/tick"
+    rational = run(w, MyopicPolicy(), 300).summary()["total_trades"] / 300
+    assert rational < w.n_agents / 2, \
+        f"rational play should leave most agents untraded most ticks: {rational}/tick"

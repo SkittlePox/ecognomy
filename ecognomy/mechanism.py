@@ -95,15 +95,25 @@ class Trade:
 class BilateralMechanism:
     """Sampled bilateral matching over posted rate matrices.
 
-    For a meeting pair, the best trade is the argmax of cross depth over the
-    G x G matrix of directed swaps. A meeting therefore yields at most **one**
-    trade: two agents who could beneficially swap apples-for-bananas *and*
-    cherries-for-durians do only the deeper one and wait for another meeting.
-    That is a real restriction on volume, kept deliberately for now so the move
-    to rate matrices could be measured against unchanged trade thickness.
+    A meeting contributes **every** crossing swap it finds to the queue, not just
+    its deepest. Two agents who can beneficially swap apples-for-bananas *and*
+    cherries-for-durians do both, which is how barter between two people who each
+    hold several things the other wants actually goes.
+
+    It used to be an argmax, and the reason to change is that "best within this
+    pair" is not a meaningful rank. The queue is global: a swap that came second
+    in its own meeting still takes its place against candidates from every other
+    meeting, and fills if the goods survive that far. Under the argmax a good
+    only ever moved if it happened to be the star of some meeting, which is
+    arbitrary in a way the global ordering is not.
+
+    `trades_per_meeting` keeps the old behaviour available as an ablation, since
+    the restriction was load-bearing for how thin trade is and thinness is what
+    the token experiment feeds on.
     """
 
     min_depth: float = 1.0
+    trades_per_meeting: int = 0   # 0 = every crossing
 
     def run(self, world, actions: Actions, rng: np.random.Generator) -> list[Trade]:
         # Who saw whom this tick, for the viewer. Sight is resampled every tick,
@@ -142,14 +152,12 @@ class BilateralMechanism:
                 if key in seen:
                     continue
                 seen.add(key)
-                found = self._best_trade(world, actions, key[0], key[1])
-                if found is not None:
-                    depth, a, b, rate = found
+                for depth, a, b, rate in self._crossings(world, actions, *key):
                     out.append((depth, key[0], key[1], a, b, rate, region))
         return out
 
-    def _best_trade(self, world, actions, i: int, j: int):
-        """Deepest crossing swap between two agents, or None.
+    def _crossings(self, world, actions, i: int, j: int):
+        """Every crossing swap between two agents, deepest first.
 
         Sweeps all G x G directed swaps at once: cell (a, b) is `i` giving `a`
         and receiving `b`. No normalisation is needed anywhere here, unlike the
@@ -174,7 +182,14 @@ class BilateralMechanism:
             # positive, which is what the statement means.
             rate = np.sqrt(np.maximum(ask_i, RATE_FLOOR)
                            / np.maximum(ask_j, RATE_FLOOR))
-        crossed = np.isfinite(product) & (product < 1.0)
+        # Strictness lives in `min_depth` alone, not here as well. Hard-coding
+        # `product < 1` here too made every setting below 1.0 a silent no-op --
+        # the knob looked like it loosened matching and did nothing. Now
+        # min_depth = 1.0 is exactly "both sides must gain strictly", and below
+        # that is a real ablation: matching accepts trades that lose one side
+        # goods, which is a way to check the guards can still catch a permissive
+        # mechanism.
+        crossed = np.isfinite(product)
 
         avail_i = np.minimum(actions.max_trade[i], world.inventory[i]).astype(np.float64)
         avail_j = np.minimum(actions.max_trade[j], world.inventory[j]).astype(np.float64)
@@ -186,10 +201,19 @@ class BilateralMechanism:
         ok = crossed & (depth > self.min_depth) & (qty > 1e-9) & np.isfinite(rate)
         np.fill_diagonal(ok, False)
         if not ok.any():
-            return None
-        scored = np.where(ok, depth, -np.inf)
-        a, b = np.unravel_index(np.argmax(scored), scored.shape)
-        return float(depth[a, b]), int(a), int(b), float(rate[a, b])
+            return []
+
+        # A pair can cross in both directions at once -- i gives `a` for `b` and
+        # also gives `b` for `a` -- but only when the two round trips multiply to
+        # less than 1, which takes at least one agent posting a negative spread.
+        # Two coherent agents can never do it, since their round trips are both
+        # exactly 1. So this is the money pump being walked rather than a double
+        # count, and it is legal by the same ruling that made incoherence legal.
+        rows, cols = np.nonzero(ok)
+        found = [(float(depth[a, b]), int(a), int(b), float(rate[a, b]))
+                 for a, b in zip(rows, cols)]
+        found.sort(key=lambda c: -c[0])
+        return found if self.trades_per_meeting <= 0 else found[:self.trades_per_meeting]
 
     def _execute(self, world, actions, candidates) -> list[Trade]:
         """Fill greedily, decrementing both sides' budgets so nothing double-spends."""

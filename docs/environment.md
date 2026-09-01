@@ -202,8 +202,18 @@ Fully ordered, so the transition is deterministic given actions and RNG draws.
    softening your ask to deepen the cross worsens your received rate by exactly the
    same square root, so buying queue priority is never free.
 
-   A meeting yields **at most one trade**, which is a real restriction on volume and
-   an open question in the ledger.
+   A meeting contributes **every** crossing swap it finds, not just its deepest.
+   Two agents who can beneficially swap apples-for-bananas *and* cherries-for-durians
+   do both. Two coherent agents cross in `G(G−1)/2` of the `G(G−1)` directed cells —
+   whichever pairs their valuation ratios rank oppositely — so the sweep is not
+   sparse; what keeps volume finite is the quantity cap, since goods given away in
+   the deepest swap are gone for the rest. `trades_per_meeting` restores the old
+   one-per-meeting rule as an ablation.
+
+   A pair can cross in *both* directions of the same good pair at once, but only
+   when the two round trips multiply below 1, which needs at least one agent posting
+   a negative spread. Two coherent agents never can. So that is the money pump being
+   walked, not a double count.
 6. **Consume.** A full bundle, clipped to inventory; `+inf` means "whatever is left".
    Reward is linear in each good, so only how much of each is eaten matters, never
    the mix.

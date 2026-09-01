@@ -32,7 +32,8 @@ class World:
         self.n_agents = config.n_agents
         self.n_goods = config.n_goods
         self.rng = np.random.default_rng(config.seed)
-        self.mechanism = mechanism or BilateralMechanism(config.market.min_depth)
+        self.mechanism = mechanism or BilateralMechanism(config.market.min_depth,
+                                                 config.market.trades_per_meeting)
         self.action_space = action_space or ActionSpace()
 
         self.t = 0

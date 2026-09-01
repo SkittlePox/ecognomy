@@ -152,11 +152,9 @@ Open, in rough order: the `assumed` rows in `docs/decisions.md` (unratified
 choices sitting in the code), the planner, and the control panel that writes a
 `WorldConfig` and launches a run.
 
-The nearest open row is **"a meeting yields at most one trade"** — `_best_trade`
-takes an `argmax`, so two agents who could beneficially swap apples-for-bananas
-*and* cherries-for-durians do only the deeper one. Letting every crossing into the
-queue is a few lines and is the better rule; it is held back only so it can be
-measured separately from the rate-matrix change.
+A meeting now contributes every crossing swap to the queue rather than only its
+deepest, which raised myopic's gain over autarky from +237 to +253 with every
+agent helped. `trades_per_meeting = 1` restores the old rule as an ablation.
 
 Two things `handoff.md` asks for that do not exist yet: **recipes** (goods
 composing into other goods) and **taxes and redistribution**.

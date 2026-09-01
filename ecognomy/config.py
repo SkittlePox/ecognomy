@@ -91,12 +91,22 @@ class VisibilityConfig:
 class MarketConfig:
     """The exchange mechanism."""
 
-    # A trade must cross by strictly more than this factor. 1.0 is the natural
-    # floor -- a depth of exactly 1.0 means the two postings touch without
-    # crossing, leaving both sides indifferent, and strictness is what stops an
-    # agent being traded into a swap it gains nothing from. Above 1.0 it is a
-    # minimum margin: 1.05 refuses every crossing thinner than 5%.
+    # A trade must cross by strictly more than this factor, and this is the only
+    # place the requirement lives. 1.0 means the two postings must genuinely
+    # cross rather than merely touch, which is what stops an agent being traded
+    # into a swap it gains nothing from -- load-bearing for the `triangular`
+    # control. Above 1.0 it is a minimum margin: 1.05 refuses every crossing
+    # thinner than 5%. Below 1.0 it accepts trades that leave a side worse off in
+    # its own posted terms, which is not a sane world but is a useful ablation
+    # for checking the failure-mode guards can still catch one.
     min_depth: float = 1.0
+
+    # How many crossing swaps one meeting may contribute to the queue. 0 is every
+    # one of them. Set to 1 for the old behaviour, where a pair traded only its
+    # deepest crossing and any other swap the two of them both wanted had to wait
+    # for another meeting -- a real restriction on volume, kept available because
+    # thin trade is what the token experiment feeds on.
+    trades_per_meeting: int = 0
 
 
 @dataclass
