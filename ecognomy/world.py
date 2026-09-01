@@ -32,7 +32,7 @@ class World:
         self.n_agents = config.n_agents
         self.n_goods = config.n_goods
         self.rng = np.random.default_rng(config.seed)
-        self.mechanism = mechanism or BilateralMechanism(config.market.min_surplus)
+        self.mechanism = mechanism or BilateralMechanism(config.market.min_depth)
         self.action_space = action_space or ActionSpace()
 
         self.t = 0
@@ -88,7 +88,7 @@ class World:
             1e-3,
         ).astype(np.float32)
 
-        # How many of the region's posted prices each agent can see. Drawn
+        # How many of the region's postings each agent can see. Drawn
         # heterogeneously: every agent has a different K, so market access is a
         # capability that differs across the population rather than a constant.
         vis = cfg.visibility

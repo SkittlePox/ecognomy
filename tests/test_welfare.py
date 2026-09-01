@@ -11,6 +11,7 @@ import pytest
 
 from ecognomy.baseline import Comparison, compare, run_baseline
 from ecognomy.policy import MyopicPolicy, RandomPolicy, run
+from ecognomy.config import WorldConfig
 from ecognomy.scenarios import get
 from ecognomy.world import World
 
@@ -86,6 +87,26 @@ def test_share_of_agents_helped_catches_a_lopsided_market():
                    baseline_per_agent=np.array([10.0, 13.0, 13.0, 14.0]))
     assert c.gain > 0
     assert c.share_of_agents_helped() == 0.25
+
+
+def test_honest_posting_never_leaves_an_agent_below_autarky():
+    """The guarantee the crossing rule is supposed to give, at run scale.
+
+    A myopic agent posts `theta_a / theta_b`, so every rate that crosses raises
+    its true utility and not merely its posted value. Production does not depend
+    on what it holds, so with movement pinned off the market can only ever add:
+    no agent may finish below its own autarky counterfactual.
+
+    Movement has to be off for the claim to be testable rather than merely
+    usually true. The two runs draw different numbers of randoms, so agents
+    relocate on different ticks and pay different travel costs -- with
+    `explore_move` at its default this puts one or two agents a point or two
+    below autarky on noise alone, which says nothing about the mechanism.
+    """
+    c = compare(WorldConfig(seed=0), MyopicPolicy(explore_move=0.0), 300)
+    delta = c.per_agent - c.baseline_per_agent
+    assert (delta >= -1e-6).all(), f"trade made {int((delta < -1e-6).sum())} agents worse off"
+    assert delta.sum() > 0, "and it has to help somebody"
 
 
 def test_random_policy_can_fall_below_its_own_autarky():

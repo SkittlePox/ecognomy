@@ -91,10 +91,12 @@ class VisibilityConfig:
 class MarketConfig:
     """The exchange mechanism."""
 
-    # A trade must be worth strictly more than this to both sides. Zero is safe:
-    # surplus is scored with true prices, so a good valued at zero contributes
-    # exactly zero and can never be accepted for something valuable.
-    min_surplus: float = 0.0
+    # A trade must cross by strictly more than this factor. 1.0 is the natural
+    # floor -- a depth of exactly 1.0 means the two postings touch without
+    # crossing, leaving both sides indifferent, and strictness is what stops an
+    # agent being traded into a swap it gains nothing from. Above 1.0 it is a
+    # minimum margin: 1.05 refuses every crossing thinner than 5%.
+    min_depth: float = 1.0
 
 
 @dataclass

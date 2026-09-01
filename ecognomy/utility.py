@@ -59,3 +59,33 @@ def marginal_value(theta: np.ndarray) -> np.ndarray:
     depends on nothing else, and in particular not on what the agent holds.
     """
     return np.asarray(theta, dtype=np.float64)
+
+
+def honest_ask(theta: np.ndarray) -> np.ndarray:
+    """(N, G, G) the reservation matrix that shades nothing.
+
+    `ask[i, a, b] = theta[i, a] / theta[i, b]` -- give up a unit of `a` only for
+    enough `b` to replace exactly the utility lost. Every round trip is exactly
+    1.0, so an honest matrix carries no spread and cannot be money-pumped: it is
+    the reciprocal-consistent surface the old price vector was confined to, and
+    the origin any shading rung departs from.
+
+    The two degenerate rows are the ones that matter:
+
+      * `theta[b] == 0` -- a good the agent never consumes. It demands an
+        infinite quantity, i.e. refuses, which is what keeps a worthless good
+        from being accepted for a valuable one. This dominates, so 0/0 is a
+        refusal rather than a giveaway.
+      * `theta[a] == 0` -- a good the agent holds but does not want. It asks 0,
+        giving the good away for any positive quantity of something it does want.
+
+    Both follow from linearity rather than being policy choices, which is why
+    they live here beside the reward and not in a policy.
+    """
+    t = np.asarray(theta, dtype=np.float64)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        ask = t[:, :, None] / t[:, None, :]
+    ask[np.broadcast_to(t[:, None, :] <= 0.0, ask.shape)] = np.inf
+    idx = np.arange(t.shape[1])
+    ask[:, idx, idx] = np.inf
+    return ask

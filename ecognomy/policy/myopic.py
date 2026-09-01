@@ -4,9 +4,10 @@ Under a linear reward the myopic policy is almost trivial, and that is a feature
 -- there is nothing left to tune, so anything the population does is a property
 of the world rather than of a hand-set constant.
 
-    price      its own preference weights, posted honestly. A good's value never
-               changes with how much is held, so this is exact at any quantity
-               and the mechanism can never approve a trade that hurts it.
+    ask        the reservation matrix implied by its own preferences, posted
+               honestly and with no spread. A good's value never changes with
+               how much is held, so this is exact at any quantity and the
+               mechanism can never approve a trade that hurts it.
     max_trade  everything it holds. Trade resolves before consumption within a
                tick, and every executed trade must raise both sides' posted
                value, so offering the lot can only improve the basket.
@@ -17,10 +18,13 @@ of the world rather than of a hand-set constant.
 
 What this rung structurally cannot do:
 
-  * It never accepts a good it does not consume: it prices such a good at zero
-    and the mechanism requires strictly positive surplus on both sides. That
-    rules out indirect exchange, money and arbitrage -- the same behaviour under
-    three names -- which is exactly what the `triangular` scenario detects.
+  * It never accepts a good it does not consume: it demands an infinite
+    quantity of such a good, so no rate crosses. That rules out indirect
+    exchange, money and arbitrage -- the same behaviour under three names --
+    which is exactly what the `triangular` scenario detects.
+  * **It posts no spread**, every round trip being exactly 1.0. The two-sided
+    quote the rate matrix makes expressible is therefore unused at this rung;
+    shading it is what rung 2 is for.
   * It never holds anything for later, so it cannot corner a market.
   * It cannot choose where to move, having no information about other regions.
 """
@@ -31,8 +35,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from ecognomy.actions import Actions
-from ecognomy.utility import marginal_value
+from ecognomy.actions import REFUSE, Actions
+from ecognomy.utility import honest_ask
 
 
 @dataclass
@@ -51,7 +55,7 @@ class MyopicPolicy:
         inv = world.inventory.astype(np.float64)
         actions = Actions.idle(n, g)
 
-        actions.price = marginal_value(world.theta).astype(np.float32)
+        actions.ask = honest_ask(world.theta).astype(np.float32)
         actions.max_trade = inv.astype(np.float32)
         # Clipped to inventory by the world, after trading has resolved.
         actions.consume = np.full((n, g), np.inf, dtype=np.float32)
@@ -74,6 +78,6 @@ class MyopicPolicy:
         in_transit = world.region < 0
         actions.consume[in_transit] = 0.0
         actions.effort[in_transit] = 0.0
-        actions.price[in_transit] = 0.0
+        actions.ask[in_transit] = REFUSE
         actions.max_trade[in_transit] = 0.0
         return actions

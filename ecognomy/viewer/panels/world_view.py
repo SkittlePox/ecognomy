@@ -5,8 +5,8 @@ agent did what it did. This panel replays the recorded run step by step:
 
   * where every agent is, and everything true about it -- preferences,
     production efficiency, mobility, market access
-  * each region's **price board**, the posted prices every trade is made against
-  * which agents could actually see which prices this tick
+  * each region's **rate board**, the postings every trade is made against
+  * which agents could actually see which postings this tick
   * every trade that executed, and who was in it
 
 Nothing here is re-simulated; it is all read from the run.
@@ -17,6 +17,7 @@ from __future__ import annotations
 import numpy as np
 from dash import Input, Output, State, ctx, dcc, html
 
+from ecognomy.metrics import implied_value, round_trip
 from ecognomy.viewer.panel import Panel
 from ecognomy.viewer.theme import P, series_color, shade
 
@@ -178,7 +179,13 @@ def register(app, data):
         tick = int(data["snapshot_ticks"][s])
         region = data["snap_region"][s]
         edge = data["snap_edge"][s] if data.has("snap_edge") else np.full(len(region), -1)
-        price, consume = data["snap_price"][s], data["snap_consume"][s]
+        ask, consume = data["snap_ask"][s], data["snap_consume"][s]
+        # The board is one row per agent, so it shows the value the matrix
+        # implies plus the margin it quotes. The matrix itself is G x G and only
+        # legible one agent at a time -- it renders under the board for whoever
+        # is focused.
+        price = implied_value(ask)
+        trips = round_trip(ask)
         effort, move = data["snap_effort"][s], data["snap_move"][s]
         inv, reward = data["snap_inventory"][s], data["snap_reward"][s]
         seen = data["snap_visibility"][s] if has_vis else None
@@ -188,8 +195,8 @@ def register(app, data):
         traded = set(int(r[1]) for r in rows) | set(int(r[2]) for r in rows)
 
         max_trade = data["snap_max_trade"][s] if data.has("snap_max_trade") else np.zeros_like(inv)
-        boards = [_board(data, r, region, price, effort, consume, inv, seen, focus, traded,
-                         max_trade)
+        boards = [_board(data, r, region, price, trips, effort, consume, inv, seen, focus,
+                         traded, max_trade)
                   for r in range(data.n_regions)]
         boards.append(_transit_card(region, edge))
 
@@ -204,20 +211,26 @@ def register(app, data):
                     _population(data, focus, has_sight),
                 ]))
 
-    def _board(data, r, region, price, effort, consume, inv, seen, focus, traded,
+    def _board(data, r, region, price, trips, effort, consume, inv, seen, focus, traded,
                max_trade):
         """One region: who is here, and the full posting of everyone present.
 
-        A posting is two things, and both belong here: the **price** it asks for
-        each good, and **how much** of each it will actually part with. A price
+        A posting is three things now, and all belong here: the **value** its
+        rate matrix implies for each good, the **margin** it quotes around that
+        value, and **how much** of each good it will actually part with. A rate
         with no quantity behind it cannot be traded against.
+
+        `margin` is the median round trip across the pairs the agent will cycle:
+        1.00 is honest reciprocal posting, above 1 is a spread it demands both
+        ways, and below 1 means its own postings can be cycled against it.
         """
         here = np.flatnonzero(region == r)
         group = html.Tr([_th("", "left")] +
-                        [_th("posts price" if g == 0 else "") for g in range(data.n_goods)] +
+                        [_th("implied value" if g == 0 else "") for g in range(data.n_goods)] +
+                        [_th("")] +
                         [_th("will part with" if g == 0 else "") for g in range(data.n_goods)])
         head = html.Tr([_th("agent", "left")] + [_th(g[:6]) for g in data.goods] +
-                       [_th(g[:6]) for g in data.goods])
+                       [_th("margin")] + [_th(g[:6]) for g in data.goods])
         body = []
         for i in here:
             i = int(i)
@@ -241,6 +254,9 @@ def register(app, data):
                                            "color": _SELF if is_self else P["text_primary"]})]
             cells += [_td(_num(price[i, g], 6, 3),
                           color=_SEEN if can_see else None) for g in range(data.n_goods)]
+            finite = trips[i][np.isfinite(trips[i])]
+            cells += [_td(_num(float(np.median(finite)), 6, 2) if finite.size else "—",
+                          color=P["text_muted"] if not finite.size else None)]
             cells += [_td(_num(max_trade[i, g], 6, 2),
                           bg=shade(max_trade[i, g], offer_ceiling, "orange"))
                       for g in range(data.n_goods)]
@@ -250,7 +266,7 @@ def register(app, data):
                            style={"width": "100%", "borderCollapse": "collapse"}) if len(here) \
             else html.Div("empty", style={"fontSize": "11px", "color": P["text_muted"]})
 
-        subtitle = "price levels are per-agent and only ratios matter"
+        subtitle = "value levels are per-agent and only ratios matter"
         return html.Div([
             html.Div(f"region {r}  ·  {len(here)} agent{'s' if len(here) != 1 else ''}",
                      style={"fontSize": "12px", "fontWeight": 600,
@@ -408,7 +424,7 @@ def register(app, data):
                                                          "color": P["text_primary"]}),
             html.Div("None of this is observable by any other agent. `wants` drives what an "
                      "agent will pay for; `can make` is what it can produce at all — a dot "
-                     "means it cannot make that good. `sight` is how many posted prices it "
+                     "means it cannot make that good. `sight` is how many posted rates it "
                      "can see in its region; `speed` is how fast it crosses an edge. "
                      "Darker means larger throughout: green for what an agent wants and can "
                      "make, blue for what it is capable of.",
@@ -423,10 +439,10 @@ def register(app, data):
 PANEL = Panel(
     id=_ID,
     title="World, step by step",
-    blurb="Who is where, what they are truly like, the prices each region is posting, "
+    blurb="Who is where, what they are truly like, the rates each region is posting, "
           "who can see them, and what executed.",
     build=build,
     register=register,
     order=10,
-    requires=("snap_region", "snap_price"),
+    requires=("snap_region", "snap_ask"),
 )

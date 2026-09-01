@@ -1,13 +1,18 @@
 """The control.
 
 Random vectors. Its purpose is to establish a floor: a world that cannot be
-traded in by random prices is broken, and a world that produces a healthy economy
+traded in by random rates is broken, and a world that produces a healthy economy
 under random play has assumed its own answer.
 
-It posts prices unrelated to its own preferences, so it accepts trades that make
+It posts rates unrelated to its own preferences, so it accepts trades that make
 it worse off. That is correct for a control and is worth keeping -- a mechanism
 that protected an irrational agent from its own offers would be doing the agents'
 reasoning for them.
+
+Its rate matrix is drawn entry by entry with no reciprocal constraint, so its
+round trips scatter either side of 1.0 and it is routinely money-pumpable. That
+is the control behaving as a control: incoherence is legal, and the floor should
+show what a world does when nobody's postings hang together.
 """
 
 from __future__ import annotations
@@ -16,7 +21,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from ecognomy.actions import Actions
+from ecognomy.actions import REFUSE, Actions
 
 
 @dataclass
@@ -32,7 +37,7 @@ class RandomPolicy:
         inv = world.inventory.astype(np.float64)
         a = Actions.idle(n, g)
 
-        a.price = rng.uniform(0.1, 1.0, size=(n, g)).astype(np.float32)
+        a.ask = np.exp(rng.uniform(-1.5, 1.5, size=(n, g, g))).astype(np.float32)
         a.consume = (inv * rng.uniform(0.0, self.consume_scale, size=(n, g))).astype(np.float32)
         a.max_trade = (inv * rng.uniform(0.0, 1.0, size=(n, g))).astype(np.float32)
 
@@ -51,6 +56,6 @@ class RandomPolicy:
         in_transit = world.region < 0
         a.consume[in_transit] = 0.0
         a.effort[in_transit] = 0.0
-        a.price[in_transit] = 0.0
+        a.ask[in_transit] = REFUSE
         a.max_trade[in_transit] = 0.0
         return a

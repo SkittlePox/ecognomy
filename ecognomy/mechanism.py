@@ -1,15 +1,62 @@
 """Exchange mechanism: the meeting rule and the execution rule.
 
-Bilateral, discriminatory (pay-as-bid), rationed by rate priority. Each region
-carries a board of posted prices; an agent sees `sight_i` of them per tick, so
-matching stays local and incomplete.
+Bilateral, rationed by rate priority. Each region carries a board of posted rate
+matrices; an agent sees `sight_i` of them per tick, so matching stays local and
+incomplete.
 
 **There is no solver.** A routine that takes the board and maximises total
 surplus is a Walrasian auctioneer: it dissolves the search friction that a medium
 of exchange exists to solve, and makes the allocation stipulated rather than
-emergent. Trades are found pairwise and filled greedily in surplus order, so the
+emergent. Trades are found pairwise and filled greedily in rate order, so the
 best rate fills first and the next best takes the remainder -- which is what
-pressures agents to shade their prices against rivals.
+pressures agents to shade their rates against rivals.
+
+**There is no order book either, and that is not a matter of taste.** A book
+needs a quote currency, and this is a barter economy: G goods, G(G-1)/2 pairs,
+no privileged one. Whether a numeraire emerges *is* the headline experiment, so
+installing a book would presuppose the answer to the question the sandbox exists
+to ask.
+
+## The rule
+
+Agent `i` gives good `a` and receives good `b` at rate `r` (units of b per a).
+Both sides posted a reservation matrix, so:
+
+    i accepts iff  r >= ask_i[a, b]
+    j accepts iff  1/r >= ask_j[b, a]
+
+which leaves a bargaining interval, non-empty exactly when
+
+    cross:  ask_i[a, b] * ask_j[b, a] < 1
+
+Read with a numeraire this is "the bid crosses the ask", but the product form
+needs no numeraire and so is the one the code uses. Execution splits the
+interval geometrically, and the gain factor is the same number for both sides:
+
+    rate    r = sqrt( ask_i[a, b] / ask_j[b, a] )
+    depth   w = 1 / sqrt( ask_i[a, b] * ask_j[b, a] )      > 1 whenever crossed
+
+`r = ask_i[a, b] * w`: each side receives its own reservation demand multiplied
+by the depth, which is why one global sort by `w` simultaneously serves every
+agent's private ranking over the competing uses of its goods.
+
+**The geometric mean is forced, not chosen.** The general rule `r = lo^(1-k) *
+hi^k` must give the reciprocal rate when the same trade is written in the other
+good's units; that requires `(hi/lo)^(1-k) = (hi/lo)^k`, so `k = 1/2`. Every
+other split -- pay-as-bid included -- needs a nominated numeraire, which a barter
+economy does not have.
+
+**Buying queue priority always costs terms of trade.** Since `r = sqrt(ask_i /
+ask_j)`, an agent that lowers its ask to deepen the cross lowers its own received
+rate by exactly the same square root. There is no setting where aggression is
+free, so escalation is self-limiting rather than merely discouraged.
+
+**Incoherent postings are legal.** An agent whose round trip `ask[a,b] *
+ask[b,a]` falls below 1 can be money-pumped, and the world does not stop it --
+the mechanism guarantees both sides gain *in posted terms*, never in true
+utility, exactly as it has always let `RandomPolicy` trade itself poorer.
+Protecting an agent from its own postings would be doing its reasoning for it.
+`metrics` measures the exposure instead, over cycles of any length.
 """
 
 from __future__ import annotations
@@ -20,19 +67,14 @@ import numpy as np
 
 from ecognomy.actions import Actions
 
-# Prices are floored only where a division needs them. Surplus is always scored
-# with the true posted price, so a good an agent genuinely values at zero
-# contributes exactly zero however large the exchange rate is. Flooring before
-# scoring instead lets `eps * rate` masquerade as gain: with a rate of ~2.6e4 it
-# produced spurious surplus large enough to make dead scenarios look alive.
-PRICE_FLOOR = 1e-12
-
-
-def _normalised(price: np.ndarray) -> np.ndarray:
-    """A posting rescaled so its largest entry is 1. Ratios are untouched."""
-    p = price.astype(np.float64)
-    top = p.max()
-    return p / top if top > 0 else p
+# Guards the division that forms an exchange rate, never the crossing test. A
+# posting of zero -- "any positive amount will do" -- is a real statement an
+# agent may make, and it is scored as written: the depth it implies is genuinely
+# unbounded, because the two postings really are unboundedly far apart. What the
+# floor does is keep the *rate* finite and positive so the trade can execute at
+# all. Nothing here rescores a posting; the ask is the whole of what the agent
+# said, so there is no true-versus-floored gap for `eps * rate` to hide in.
+RATE_FLOOR = 1e-12
 
 
 @dataclass(frozen=True)
@@ -51,22 +93,17 @@ class Trade:
 
 @dataclass
 class BilateralMechanism:
-    """Sampled bilateral matching over posted price vectors.
+    """Sampled bilateral matching over posted rate matrices.
 
-    For a meeting pair, the best trade is the argmax over the G x G matrix of
-    joint surplus. Agent i gives `a` and receives `b` at rate `r` = b per a:
-
-        r      = sqrt( (p_i[a]/p_i[b]) * (p_j[a]/p_j[b]) )     geometric mean
-        du_i   = p_i[b] * r - p_i[a]     per unit of a given
-        du_j   = p_j[a] - p_j[b] * r     per unit of a received
-
-    Both must be strictly positive, so neither side is ever handed a trade it is
-    merely indifferent to. The geometric mean is used because it is invariant
-    under relabelling which good is "a"; an arithmetic midpoint is not, and would
-    quietly favour whichever good the implementation indexed first.
+    For a meeting pair, the best trade is the argmax of cross depth over the
+    G x G matrix of directed swaps. A meeting therefore yields at most **one**
+    trade: two agents who could beneficially swap apples-for-bananas *and*
+    cherries-for-durians do only the deeper one and wait for another meeting.
+    That is a real restriction on volume, kept deliberately for now so the move
+    to rate matrices could be measured against unchanged trade thickness.
     """
 
-    min_surplus: float = 0.0
+    min_depth: float = 1.0
 
     def run(self, world, actions: Actions, rng: np.random.Generator) -> list[Trade]:
         # Who saw whom this tick, for the viewer. Sight is resampled every tick,
@@ -83,7 +120,7 @@ class BilateralMechanism:
                 continue
             candidates += self._region_candidates(world, actions, here, region, rng)
 
-        # Best trades clear first, so inventory is not consumed by marginal ones.
+        # Best rates clear first, so inventory is not consumed by marginal ones.
         # Ties are broken by a seeded shuffle before the sort, never by agent id,
         # which would hand a permanent structural advantage to low-numbered agents.
         rng.shuffle(candidates)
@@ -107,49 +144,59 @@ class BilateralMechanism:
                 seen.add(key)
                 found = self._best_trade(world, actions, key[0], key[1])
                 if found is not None:
-                    surplus, a, b, rate = found
-                    out.append((surplus, key[0], key[1], a, b, rate, region))
+                    depth, a, b, rate = found
+                    out.append((depth, key[0], key[1], a, b, rate, region))
         return out
 
     def _best_trade(self, world, actions, i: int, j: int):
-        # Normalise each posting to a common scale before scoring.
-        #
-        # A price vector means the same thing multiplied by any positive
-        # constant -- (1, 6, 2) and (1000, 6000, 2000) imply identical rates.
-        # But `du` is linear in the posting, so without this an agent could
-        # multiply its whole vector by 1000, change nothing about the trade it
-        # is willing to make, and inflate its joint surplus 500-fold, buying the
-        # front of the greedy queue for free. Normalising by the max (not the
-        # geometric mean, which the price floor stops scaling linearly) makes
-        # the ranking depend on how much the two agents *disagree*, which is the
-        # real signal, rather than on who posts the largest numbers.
-        true_i = _normalised(actions.price[i])
-        true_j = _normalised(actions.price[j])
-        f_i = np.maximum(true_i, PRICE_FLOOR)
-        f_j = np.maximum(true_j, PRICE_FLOOR)
+        """Deepest crossing swap between two agents, or None.
 
-        rate = np.sqrt((f_i[:, None] / f_i[None, :]) * (f_j[:, None] / f_j[None, :]))
-        du_i = true_i[None, :] * rate - true_i[:, None]   # (a, b), per unit of a
-        du_j = true_j[:, None] - true_j[None, :] * rate
+        Sweeps all G x G directed swaps at once: cell (a, b) is `i` giving `a`
+        and receiving `b`. No normalisation is needed anywhere here, unlike the
+        price-vector version -- a rate matrix has no free scale, so the exploit
+        where an agent multiplied its whole posting by 1000 to buy queue
+        priority for nothing cannot be expressed.
+        """
+        ask_i = actions.ask[i].astype(np.float64)          # (a, b)
+        ask_j = actions.ask[j].astype(np.float64).T        # (a, b) <- ask_j[b, a]
+
+        # inf * 0 is the one product numpy cannot evaluate: a refusal against a
+        # giveaway. It is a refusal, so it must not cross.
+        with np.errstate(invalid="ignore", divide="ignore"):
+            product = ask_i * ask_j
+            depth = 1.0 / np.sqrt(product)
+            # Both sides are floored, not just the divisor. An ask of exactly
+            # zero says "any positive amount of b will do", and the geometric
+            # split of the interval [0, hi] is zero -- which would hand the
+            # receiver the good for literally nothing and then be dropped by the
+            # quantity check, so a good an agent does not want would stop being
+            # dumpable at all. Flooring the numerator keeps the rate tiny and
+            # positive, which is what the statement means.
+            rate = np.sqrt(np.maximum(ask_i, RATE_FLOOR)
+                           / np.maximum(ask_j, RATE_FLOOR))
+        crossed = np.isfinite(product) & (product < 1.0)
 
         avail_i = np.minimum(actions.max_trade[i], world.inventory[i]).astype(np.float64)
         avail_j = np.minimum(actions.max_trade[j], world.inventory[j]).astype(np.float64)
-        qty = np.minimum(avail_i[:, None], avail_j[None, :] / np.maximum(rate, PRICE_FLOOR))
+        qty = np.minimum(avail_i[:, None], avail_j[None, :] / np.maximum(rate, RATE_FLOOR))
 
-        ok = (du_i > self.min_surplus) & (du_j > self.min_surplus) & (qty > 1e-9)
+        # A crossing of exactly 1.0 leaves both sides indifferent. Strictness is
+        # load-bearing: it is what stops an agent being traded into a swap it
+        # gains nothing from, and what keeps `triangular` a working control.
+        ok = crossed & (depth > self.min_depth) & (qty > 1e-9) & np.isfinite(rate)
         np.fill_diagonal(ok, False)
         if not ok.any():
             return None
-        joint = np.where(ok, (du_i + du_j) * qty, -np.inf)
-        a, b = np.unravel_index(np.argmax(joint), joint.shape)
-        return float(joint[a, b]), int(a), int(b), float(rate[a, b])
+        scored = np.where(ok, depth, -np.inf)
+        a, b = np.unravel_index(np.argmax(scored), scored.shape)
+        return float(depth[a, b]), int(a), int(b), float(rate[a, b])
 
     def _execute(self, world, actions, candidates) -> list[Trade]:
         """Fill greedily, decrementing both sides' budgets so nothing double-spends."""
         remaining = np.minimum(actions.max_trade, world.inventory).astype(np.float64)
         trades: list[Trade] = []
         for _, i, j, a, b, rate, region in candidates:
-            qty_a = min(remaining[i, a], remaining[j, b] / max(rate, PRICE_FLOOR),
+            qty_a = min(remaining[i, a], remaining[j, b] / max(rate, RATE_FLOOR),
                         float(world.inventory[i, a]))
             qty_b = qty_a * rate
             if qty_a <= 1e-9 or qty_b <= 1e-9 or qty_b > world.inventory[j, b]:

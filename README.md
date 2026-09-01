@@ -237,15 +237,17 @@ worthless to it and producing on spec pays only if someone trades for it later.
 
 The step-by-step panel is where you watch the mechanism actually work:
 
-- **Region cards** carry that region's **price board** — the full posting of
-  every agent present: the **price** it asks for each good, and **how much of
-  each it will part with**. Both halves matter; a price with no quantity behind
-  it cannot be traded against. This is the entire input to the matching rule.
-  Price *levels* are per-agent and meaningless in isolation — only the ratios
-  within a row carry information — so prices are shown unshaded while the
-  quantities are shaded like every other goods amount.
-- **Regional stock** sits in the card header, so a region that has run dry
-  explains a collapse in production without hunting through other charts.
+- **Region cards** carry that region's **rate board** — the posting of every
+  agent present: the **implied value** of each good, the **margin** it quotes
+  around that value, and **how much of each it will part with**. A rate with no
+  quantity behind it cannot be traded against. Value *levels* are per-agent and
+  meaningless in isolation — only the ratios within a row carry information — so
+  they are shown unshaded while quantities are shaded like every other amount.
+  The board summarises a G×G matrix into one row per agent; the matrix itself is
+  legible one agent at a time, so the full round trips live in the agent
+  inspector. A margin of 1.00 is honest reciprocal posting, above 1 is a spread
+  demanded in both directions, and below 1 is a posting that can be cycled
+  against its own author.
 - **Pick an agent** in the "highlight what agent sees" dropdown and the rows it
   can see this tick are shaded. Sight is resampled every tick, so this is
   recorded rather than derived — an agent with `sight` 8 standing in a region
@@ -312,17 +314,34 @@ anything yet.** There are two policies: `RandomPolicy` (the control) and
 own preferences and picks the best action each tick).
 
 Agents emit **simultaneous continuous vectors** each tick — what to eat, how to
-split effort, what price to post for each good, and how much of each they will
-part with — rather than picking one discrete action. That change removed a
+split effort, what rate to post for every ordered pair of goods, and how much of
+each they will part with — rather than picking one discrete action. That change removed a
 pathology: when offering competed with eating and producing for a single action
 slot, a policy either never traded or traded constantly and starved, with nothing
 in between. Welfare gain over autarky on the sampled 20-agent world went from
 +11 to **+1461**, with 95% of agents better off, and the myopic policy runs about
 4.5x faster.
 
-There is **no markup parameter**. The posted price is simultaneously the agent's
-valuation and its ask, so shading the price *is* the markup — and how far to
-shade requires knowing what rivals post, which is the next rung, not this one.
+Agents post a **rate matrix**, not a price per good: `ask[a][b]` is the least
+amount of `b` an agent will take for a unit of `a`, and the reverse direction is
+a separate number. That is what lets an agent quote a **spread** — sell an apple
+for 2 bananas but pay only 1.5 — which a single price per good cannot express,
+since it pins each rate to the reciprocal of its opposite. It also makes shading
+point the right way: under a price vector, marking an apple up made you a tougher
+apple seller *and* a keener apple buyer off the same number.
+
+A trade exists where two postings **cross**, `ask_i[a][b] × ask_j[b][a] < 1`, and
+executes at the geometric mean of the two — which is forced rather than chosen,
+because any other split needs you to nominate a money good, and this is a barter
+economy with no such good. There is **no markup parameter**: the posted rate is
+simultaneously the agent's reservation and its ask, so shading the rate *is* the
+markup — and how far to shade requires knowing what rivals post, which is the
+next rung, not this one.
+
+Nothing stops an agent posting rates that do not hang together. If its own bid
+crosses its own ask, a counterparty can cycle goods through it and hand back less
+than it took. That is legal and measured, not prevented — the mechanism promises
+both sides gain in *posted* terms, never in true utility.
 
 Market access is a drawn capability: **each agent has a different `sight`**, the
 number of posted prices it can see in its region. Seeing more helps, but only

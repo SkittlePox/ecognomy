@@ -36,7 +36,7 @@ class RunRecorder:
         self.region: list[np.ndarray] = []
         self.edge: list[np.ndarray] = []
         self.reward: list[np.ndarray] = []
-        self.price: list[np.ndarray] = []
+        self.ask: list[np.ndarray] = []
         self.consume: list[np.ndarray] = []
         self.effort: list[np.ndarray] = []
         self.max_trade: list[np.ndarray] = []
@@ -64,7 +64,7 @@ class RunRecorder:
         self.edge.append(w.edge.copy())
         self.reward.append(w.last_reward.copy())
         a = w.last_actions
-        self.price.append(a.price.copy())
+        self.ask.append(a.ask.copy())
         self.consume.append(a.consume.copy())
         self.effort.append(a.effort.copy())
         self.max_trade.append(a.max_trade.copy())
@@ -95,6 +95,9 @@ class RunRecorder:
             "token_weight": self.metrics.series("token_weight"),
             "token_trade_share": self.metrics.series("token_trade_share"),
             "exchange_value_holdings": self.metrics.series("exchange_value_holdings"),
+            "quoted_spread": self.metrics.series("quoted_spread"),
+            "arbitrage_depth": self.metrics.series("arbitrage_depth"),
+            "n_pumpable": self.metrics.series("n_pumpable"),
             "n_in_transit": self.metrics.series("n_in_transit"),
             "n_illegal": self.metrics.series("n_illegal"),
             "price_by_region": np.stack([r.price_by_region for r in recs]) if recs else np.zeros((0,)),
@@ -106,7 +109,7 @@ class RunRecorder:
             "snap_region": np.stack(self.region) if self.region else np.zeros((0,)),
             "snap_edge": np.stack(self.edge) if self.edge else np.zeros((0,)),
             "snap_reward": np.stack(self.reward) if self.reward else np.zeros((0,)),
-            "snap_price": np.stack(self.price) if self.price else np.zeros((0,)),
+            "snap_ask": np.stack(self.ask) if self.ask else np.zeros((0,)),
             "snap_consume": np.stack(self.consume) if self.consume else np.zeros((0,)),
             "snap_effort": np.stack(self.effort) if self.effort else np.zeros((0,)),
             "snap_max_trade": np.stack(self.max_trade) if self.max_trade else np.zeros((0,)),

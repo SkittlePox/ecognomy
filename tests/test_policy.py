@@ -11,7 +11,8 @@ import pytest
 from ecognomy.config import VisibilityConfig, WorldConfig
 from ecognomy.policy import MyopicPolicy, RandomPolicy, run
 from ecognomy.topology import Topology
-from ecognomy.utility import marginal_value
+from ecognomy.metrics import arbitrage_depth, round_trip
+from ecognomy.utility import honest_ask
 from ecognomy.world import World
 
 
@@ -30,11 +31,34 @@ def test_myopic_beats_random_on_reward():
 
 
 def test_myopic_posts_its_true_preferences():
-    """Rung 1 does not shade. Under a linear reward the honest price is simply
-    theta, and it is exact at any trade size."""
+    """Rung 1 does not shade. Under a linear reward the honest rate for giving up
+    `a` to get `b` is simply `theta_a / theta_b`, exact at any trade size."""
     w = _world()
     a = MyopicPolicy().act(w, w.rng)
-    assert np.allclose(a.price, marginal_value(w.theta), atol=1e-6)
+    settled = w.region >= 0
+    assert np.allclose(a.ask[settled], honest_ask(w.theta)[settled], atol=1e-6)
+
+
+def test_myopic_posts_no_spread_and_cannot_be_pumped():
+    """Rung 1 quotes both sides of every pair at the same rate, so its round trips
+    are exactly 1.0 and no cycle takes anything off it. The two-sided quote the
+    matrix makes expressible is real but unused until a shading rung uses it."""
+    w = _world()
+    a = MyopicPolicy().act(w, w.rng)
+    settled = w.region >= 0
+    trips = round_trip(a.ask[settled])
+    assert np.allclose(trips[np.isfinite(trips)], 1.0, atol=1e-5)
+    assert np.allclose(arbitrage_depth(a.ask[settled]), 1.0, atol=1e-6)
+
+
+def test_random_postings_are_incoherent_and_that_is_the_point():
+    """The control does not hang together, and the world does not protect it.
+    Incoherence is legal and measured; a mechanism that refused to trade with an
+    irrational agent would be doing its reasoning for it."""
+    w = _world()
+    a = RandomPolicy().act(w, w.rng)
+    settled = w.region >= 0
+    assert (arbitrage_depth(a.ask[settled]) < 1.0).mean() > 0.5
 
 
 def test_myopic_offers_everything_and_eats_the_remainder():

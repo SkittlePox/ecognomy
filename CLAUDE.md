@@ -106,19 +106,36 @@ never a second y-axis.
   consequence to keep in mind is that gains from trade come *only* from agents
   valuing goods differently, and that willingness to pay never responds to
   scarcity.
-- **Surplus is scored with true posted prices, never floored ones.** Prices are
-  floored only for the division that forms an exchange rate. Scoring with the
-  floored price lets `eps * rate` masquerade as gain — with a rate of ~2.6e4 that
-  was large enough to make dead scenarios look alive.
+- **A posting is a rate matrix, not a valuation.** `ask[i, a, b]` is the minimum
+  units of `b` agent `i` demands per unit of `a` it gives up, `+inf` is a refusal,
+  and there is no numeraire — so no buyer, no seller, and no side whose number
+  sets the price. A trade exists when the two postings **cross**,
+  `ask_i[a,b] * ask_j[b,a] < 1`, and executes at the geometric mean, which is
+  *forced*: every other split needs a money good the world does not have.
+  Because the ask is the whole of what an agent said, there is no
+  true-versus-floored gap for `eps * rate` to hide in; the floor guards the rate
+  division only, never the crossing test.
+- **Incoherent postings are legal and measured, never prevented.** A round trip
+  `ask[a,b] * ask[b,a]` below 1 can be money-pumped. The mechanism guarantees both
+  sides gain in *posted* terms, never in true utility — the same stance that lets
+  `RandomPolicy` trade itself poorer. `metrics.arbitrage_depth` reports the
+  exposure. Protecting an agent from its own postings would be doing its
+  reasoning for it.
 - **Scenario endowments must not smuggle in goods nobody produces.** Endowing
   every agent with a little of everything hands each pair something the other
   wants and destroys `triangular` and `autarky` as controls.
-- **Nothing in the tick may depend on agent index.** Rationing is pro rata and
-  candidate trades are shuffled before sorting, both to stop low ids acquiring a
+- **Nothing in the tick may depend on agent index.** Candidate trades are shuffled
+  before sorting, so ties never resolve by id and no low-numbered agent acquires a
   structural advantage. `test_identical_agents_end_up_identical` is the guard.
-- **No published price.** Agents observe only their own trades and the offers
-  shown to them. Price formation is the convergence of subjective estimates; a
-  global price signal anywhere in the code would destroy the emergence claim.
+  (Production used to ration a shared stock pro rata for the same reason; that
+  stock is gone, and nothing in the tick rations pro rata today.)
+- **No published price, and no order book.** Agents observe only their own trades
+  and the postings shown to them. Price formation is the convergence of subjective
+  estimates; a global price signal anywhere in the code would destroy the
+  emergence claim. A book is ruled out for a sharper reason than taste: it needs a
+  quote currency, and whether a numeraire emerges *is* the headline experiment, so
+  installing one presupposes the answer. The dashboard's "implied value" readout
+  lives in `metrics`, is never read by the tick, and no agent observes it.
 
 ## State of play
 
@@ -128,12 +145,18 @@ trades roughly nine times in 300 ticks, which is the double coincidence of wants
 biting as intended.
 
 The dashboard is built. The step-by-step world panel is the main instrument:
-locations, ground truth per agent, per-region price boards, recorded who-saw-whom,
+locations, ground truth per agent, per-region rate boards, recorded who-saw-whom,
 and executed trades. Summary panels sit around it.
 
 Open, in rough order: the `assumed` rows in `docs/decisions.md` (unratified
 choices sitting in the code), the planner, and the control panel that writes a
 `WorldConfig` and launches a run.
+
+The nearest open row is **"a meeting yields at most one trade"** — `_best_trade`
+takes an `argmax`, so two agents who could beneficially swap apples-for-bananas
+*and* cherries-for-durians do only the deeper one. Letting every crossing into the
+queue is a few lines and is the better rule; it is held back only so it can be
+measured separately from the rate-matrix change.
 
 Two things `handoff.md` asks for that do not exist yet: **recipes** (goods
 composing into other goods) and **taxes and redistribution**.

@@ -15,7 +15,8 @@ from ecognomy.config import PreferenceConfig, ProductionConfig, SinkConfig, Visi
 from ecognomy.mechanism import BilateralMechanism
 from ecognomy.policy import MyopicPolicy, RandomPolicy, run
 from ecognomy.topology import Topology
-from ecognomy.utility import marginal_value, utility
+from ecognomy.metrics import arbitrage_depth, round_trip
+from ecognomy.utility import honest_ask, marginal_value, utility
 from ecognomy.world import IN_TRANSIT, World
 
 
@@ -61,11 +62,19 @@ def _two_in_a_region(w):
     return int(same[0]), int(same[1])
 
 
-def _post(w, i, j, price_i, price_j, qty=1.0):
-    """Both agents post a price vector and offer `qty` of everything."""
+def _post(w, i, j, values_i, values_j, qty=1.0):
+    """Both agents post the honest matrix implied by a valuation, offering `qty`.
+
+    Honest postings carry no spread, so this is the subset of the action space
+    the old price vector could reach -- which is what makes it the right helper
+    for the tests that predate the matrix.
+    """
     a = Actions.idle(w.n_agents, w.n_goods)
-    a.price[i, :len(price_i)] = price_i
-    a.price[j, :len(price_j)] = price_j
+    theta = np.zeros((2, w.n_goods))
+    theta[0, :len(values_i)] = values_i
+    theta[1, :len(values_j)] = values_j
+    ask = honest_ask(theta)
+    a.ask[i], a.ask[j] = ask[0], ask[1]
     a.max_trade[i] = qty
     a.max_trade[j] = qty
     return a
@@ -84,44 +93,107 @@ def test_goods_are_conserved_by_trade():
 
 
 def test_execution_rate_is_the_geometric_mean():
-    """Neither side's posted rate sets the price; the mean between them does."""
+    """Neither side's posted rate sets the price; the mean between them does.
+
+    Stated without a numeraire: the giver's floor is its own ask, the receiver's
+    ceiling is the reciprocal of the ask it posted the other way, and execution
+    lands strictly between them.
+    """
     w = World(WorldConfig(seed=3, sink=SinkConfig(spoilage=(0.0,) * 5)))
     i, j = _two_in_a_region(w)
     a = _post(w, i, j, [1.0, 2.0, 1.0, 1.0, 1.0], [4.0, 1.0, 1.0, 1.0, 1.0])
     w.step(a)
     tr = w.last_trades[0]
-    r_i = a.price[i, tr.good_a] / a.price[i, tr.good_b]
-    r_j = a.price[j, tr.good_a] / a.price[j, tr.good_b]
-    assert tr.price == pytest.approx(float(np.sqrt(r_i * r_j)), rel=1e-4)
-    assert r_i < tr.price < r_j, "execution must land strictly between the two rates"
+    floor = a.ask[i, tr.good_a, tr.good_b]
+    ceiling = 1.0 / a.ask[j, tr.good_b, tr.good_a]
+    assert tr.price == pytest.approx(float(np.sqrt(floor * ceiling)), rel=1e-4)
+    assert floor < tr.price < ceiling, "execution must land strictly inside the interval"
 
 
-def test_posting_larger_numbers_buys_no_advantage():
-    """A price vector means the same thing at any positive scale.
+def test_the_split_is_the_only_numeraire_free_one():
+    """`r = lo**(1-k) * hi**k` must give the reciprocal rate when the same trade
+    is written in the other good's units. Only k = 1/2 does, which is why the
+    geometric mean is forced rather than chosen: every other split needs a
+    nominated money good, and a barter economy has none.
+    """
+    lo, hi = 0.25, 4.0
+    for k in (0.0, 0.25, 0.5, 0.75, 1.0):
+        forward = lo ** (1 - k) * hi**k
+        backward = (1 / hi) ** (1 - k) * (1 / lo) ** k
+        consistent = forward * backward == pytest.approx(1.0, rel=1e-9)
+        assert consistent == (k == 0.5), f"k={k} consistency should be {k == 0.5}"
 
-    `du` is linear in the posting, so before postings were normalised an agent
-    could multiply its whole vector by 1000, change nothing about the trade it
-    was willing to make, and inflate its joint surplus 500-fold — which bought
-    it the front of the greedy fill queue for nothing. Any learning rung would
-    have found that immediately.
+
+def test_a_spread_is_expressible():
+    """The whole point of the matrix, and the thing a price vector could not say.
+
+    The agent will sell an apple for 2 bananas and buy one for 1.5, so a
+    counterparty offering exactly 1.75 either way is refused in both directions.
+    Under a vector, refusing at 1.75 one way *forces* acceptance at 1.75 the
+    other, because the two rates were pinned to be reciprocal.
     """
     w = World(WorldConfig(seed=3, sink=SinkConfig(spoilage=(0.0,) * 5)))
     i, j = _two_in_a_region(w)
-    base = [1.0, 4.0, 1.0, 1.0, 1.0]
-    other = [4.0, 1.0, 1.0, 1.0, 1.0]
+    apple, banana = 0, 1
 
-    results = []
-    for scale in (1.0, 1000.0):
-        w2 = World(WorldConfig(seed=3, sink=SinkConfig(spoilage=(0.0,) * 5)))
-        a = _post(w2, i, j, [v * scale for v in base], other)
-        w2.step(a)
-        assert w2.last_trades, f"scale {scale} should still trade"
-        tr = w2.last_trades[0]
-        results.append((tr.good_a, tr.good_b, round(tr.price, 6), round(tr.qty_a, 6)))
-    assert results[0] == results[1], f"scale changed the trade: {results}"
+    for direction in (1, -1):
+        a = Actions.idle(w.n_agents, w.n_goods)
+        a.ask[i, apple, banana] = 2.0     # sell an apple only for 2+ bananas
+        a.ask[i, banana, apple] = 1 / 1.5  # buy an apple only at 1.5 or less
+        a.ask[j, apple, banana] = 1.75 if direction > 0 else 1e9
+        a.ask[j, banana, apple] = 1 / 1.75 if direction < 0 else 1e9
+        a.max_trade[i] = a.max_trade[j] = 1.0
+        w.step(a)
+        assert w.last_trades == [], f"1.75 must be refused in direction {direction}"
+
+    assert round_trip(a.ask[i])[apple, banana] == pytest.approx(2.0 / 1.5, rel=1e-5)
 
 
-def test_identical_price_vectors_do_not_trade():
+def test_buying_queue_priority_costs_terms_of_trade():
+    """There is no free way to jump the fill queue.
+
+    Depth is `1 / sqrt(ask_i * ask_j)` and the executed rate is
+    `sqrt(ask_i / ask_j)`, so an agent that softens its ask to deepen the cross
+    moves both by exactly the same square root. Priority is always paid for in
+    the rate received, which is what makes escalation self-limiting rather than
+    merely discouraged.
+    """
+    i, j = _two_in_a_region(World(WorldConfig(seed=3)))
+    apple, banana = 0, 1
+
+    seen = []
+    for mine in (2.0, 1.0, 0.5):
+        w = World(WorldConfig(seed=3, sink=SinkConfig(spoilage=(0.0,) * 5)))
+        a = Actions.idle(w.n_agents, w.n_goods)
+        a.ask[i, apple, banana] = mine
+        a.ask[j, banana, apple] = 0.1
+        a.max_trade[i] = a.max_trade[j] = 1.0
+        w.step(a)
+        assert w.last_trades, f"ask {mine} against 0.1 must cross"
+        seen.append((1.0 / np.sqrt(mine * 0.1), w.last_trades[0].price))
+
+    depths = [d for d, _ in seen]
+    rates = [r for _, r in seen]
+    assert depths == sorted(depths), "softening the ask must deepen the cross"
+    assert rates == sorted(rates, reverse=True), "and must worsen the rate received"
+    for depth, rate in seen:
+        assert depth * rate == pytest.approx(1.0 / 0.1, rel=1e-4), "paid one for one"
+
+
+def test_scale_cannot_be_posted_at_all():
+    """The exploit the old `_normalised` guard existed for is now unsayable.
+
+    A price vector meant the same thing multiplied by any constant, so an agent
+    could post 1000x bigger numbers, change nothing it was willing to do, and
+    inflate its ranked surplus enough to buy the front of the queue. A rate
+    matrix has no free scale -- it is already a ratio -- so there is nothing
+    left to normalise and nothing to exploit.
+    """
+    theta = np.array([[1.0, 4.0, 1.0, 1.0, 1.0]])
+    assert np.allclose(honest_ask(theta), honest_ask(theta * 1000.0), equal_nan=True)
+
+
+def test_identical_postings_do_not_trade():
     """With no disagreement there is no gain, whatever the quantities on offer."""
     w = World(WorldConfig(seed=3))
     i, j = _two_in_a_region(w)
@@ -133,10 +205,12 @@ def test_identical_price_vectors_do_not_trade():
 def test_a_worthless_good_is_never_accepted_for_a_valuable_one():
     """The artifact this guards against is subtle and broke two scenarios.
 
-    Prices are floored before dividing, so a good priced at zero yields an
-    enormous exchange rate. Scoring surplus with the floored price then lets
-    `eps * rate` masquerade as gain. Surplus is scored with the true price, so a
-    good genuinely valued at zero contributes exactly zero.
+    An agent that does not consume a good demands an infinite quantity of it,
+    so no rate crosses and the swap cannot be reached at all. Under the price
+    vector this needed a careful argument about flooring -- a good priced at
+    zero yielded an enormous exchange rate, and scoring with the floored price
+    let `eps * rate` masquerade as gain. A refusal states the same thing
+    directly and leaves nothing to get wrong.
     """
     w = World(WorldConfig(seed=3, sink=SinkConfig(spoilage=(0.0,) * 5)))
     i, j = _two_in_a_region(w)

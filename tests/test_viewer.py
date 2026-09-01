@@ -127,10 +127,12 @@ def test_world_view_describes_every_combination_of_outputs(run):
 def test_world_view_snapshots_cover_every_agent_and_tick(run):
     """The panel indexes snapshots directly, so their shapes must line up."""
     n_snaps = len(run["snapshot_ticks"])
-    for key in ("snap_region", "snap_price", "snap_consume", "snap_effort",
+    for key in ("snap_region", "snap_ask", "snap_consume", "snap_effort",
                 "snap_reward", "snap_edge"):
         assert run[key].shape[:2] == (n_snaps, run.n_agents), key
     assert run["snap_move"].shape == (n_snaps, run.n_agents)
+    assert run["snap_ask"].shape == (n_snaps, run.n_agents, run.n_goods, run.n_goods), \
+        "the posting is a rate matrix per agent, not a vector"
 
 
 def test_visibility_is_recorded_and_bounded_by_sight(run):
@@ -147,7 +149,7 @@ def test_visibility_is_recorded_and_bounded_by_sight(run):
 
 
 def test_visibility_respects_region_boundaries(run):
-    """An agent can only see prices posted in the region it is standing in."""
+    """An agent can only see rates posted in the region it is standing in."""
     import numpy as np
 
     vis, region = run["snap_visibility"], run["snap_region"]

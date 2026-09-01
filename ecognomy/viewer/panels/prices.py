@@ -1,22 +1,29 @@
 """Prices by region.
 
-Built on **posted** prices rather than realised trade ratios. Every agent posts a
+Built on **posted** rates rather than realised trade ratios. Every agent posts a
 valuation for every good every tick, so the posted board is dense, while executed
 trades are sparse and give a ragged signal with long gaps.
 
-Prices are shown relative to each agent's own geometric mean. A price vector is
-meaningful only up to scale, so raw levels compare nothing; dividing by the
-geometric mean leaves the relative prices, which is the informative part, and
-treats every good alike instead of privileging a numeraire.
+Agents post a G x G matrix of rates, which has no levels in it at all -- only
+ratios. What is plotted is the **implied value** of each good: the single
+valuation vector the matrix is nearest to, normalised to a geometric mean of 1,
+so every good is treated alike and none is privileged as a numeraire.
+
+Two things that summary deliberately throws away, both visible in the agent
+inspector instead: the spread an agent quotes around its own level, and any
+incoherence between its rates, which is precisely the part no value vector can
+represent.
 
 There is deliberately no good-pair selector. A pair list carries each rate twice
 -- apple/banana and banana/apple are the same fact inverted -- and G(G-1) entries
-for what G relative prices already say.
+for what G implied values already say.
 """
 
 from __future__ import annotations
 
 import numpy as np
+
+from ecognomy.metrics import implied_value
 import plotly.graph_objects as go
 from dash import Input, Output, dcc, html
 
@@ -26,19 +33,23 @@ from ecognomy.viewer.theme import P, figure, line, series_color
 _ID = "prices"
 
 
-def _relative(price: np.ndarray) -> np.ndarray:
-    """(T, N, G) posted prices as multiples of each agent's own geometric mean."""
-    p = np.maximum(price.astype(np.float64), 1e-12)
-    gm = np.exp(np.log(p).mean(axis=2, keepdims=True))
-    return p / gm
+def _relative(ask: np.ndarray) -> np.ndarray:
+    """(T, N, G) the value level each agent's rate matrix implies, per good.
+
+    A matrix has no levels, only ratios, so this is the rank-1 fit: normalised
+    to a geometric mean of 1, which is the same scale the price-vector version
+    of this panel used. What it cannot show is the spread an agent quotes around
+    that level -- for that, see the round trip in the agent inspector.
+    """
+    return implied_value(ask.astype(np.float64))
 
 
 def _by_region(rel: np.ndarray, region: np.ndarray, n_regions: int):
-    """Median relative price per region per good, and the within-region spread.
+    """Median implied value per region per good, and the within-region spread.
 
-    Median rather than mean because a single agent holding almost none of a good
-    posts an enormous valuation for it, and a mean would track that one agent
-    instead of the region.
+    Median rather than mean because a single agent that refuses most of its pairs
+    implies an extreme level, and a mean would track that one agent instead of
+    the region.
     """
     t, n, g = rel.shape
     med = np.full((t, n_regions, g), np.nan)
@@ -84,7 +95,7 @@ def build(data):
                        marks=None, tooltip={"placement": "bottom"}),
         ], style={"display": "flex", "alignItems": "center", "gap": "6px",
                   "marginBottom": "10px", "maxWidth": "700px"}),
-        html.Div("Median posted price in each region, as a multiple of what an agent asks "
+        html.Div("Median implied value in each region, as a multiple of what an agent asks "
                  "for its average good. A gap between regions is the chokepoint readout.",
                  style={"fontSize": "11px", "color": P["text_muted"], "margin": "0 0 4px"}),
         dcc.Graph(id=f"{_ID}-level", config={"displayModeBar": False}),
@@ -96,7 +107,7 @@ def build(data):
 
 
 def register(app, data):
-    rel = _relative(data["snap_price"])
+    rel = _relative(data["snap_ask"])
     med, spread = _by_region(rel, data["snap_region"], data.n_regions)
 
     @app.callback(
@@ -115,23 +126,23 @@ def register(app, data):
         fig.add_hline(y=1.0, line=dict(color=P["axis"], width=1, dash="dot"),
                       annotation_text="average good", annotation_position="top left",
                       annotation_font=dict(size=10, color=P["text_muted"]))
-        figure(fig, ylabel=f"{data.goods[good]} price ÷ own mean", legend=True,
+        figure(fig, ylabel=f"{data.goods[good]} value ÷ own mean", legend=True,
                height=260, margin_right=90)
 
         fig2 = go.Figure()
         for r in range(data.n_regions):
             line(fig2, t, _smooth(spread[:, r, good], window), f"region {r}", series_color(r))
-        figure(fig2, ylabel="IQR of posted price", legend=True, height=210, margin_right=90)
+        figure(fig2, ylabel="IQR of implied value", legend=True, height=210, margin_right=90)
         return fig, fig2
 
 
 PANEL = Panel(
     id=_ID,
     title="Prices by region",
-    blurb="Posted prices, which every agent sets every tick — denser and steadier than the "
-          "sparse record of what actually executed.",
+    blurb="The value level each agent's posted rates imply, set every tick — denser and "
+          "steadier than the sparse record of what actually executed.",
     build=build,
     register=register,
     order=30,
-    requires=("snap_price", "snap_region"),
+    requires=("snap_ask", "snap_region"),
 )

@@ -23,7 +23,7 @@ def main() -> None:
     p.add_argument("--regions", type=int, default=3)
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--sight-mean", type=float, default=3.0,
-                   help="average number of a region's posted prices an agent sees (search friction)")
+                   help="average number of a region's postings an agent sees (search friction)")
     p.add_argument("--shape-spread", type=float, default=None,
                    help="how differently agents are good at things; wider means more "
                         "comparative advantage and more reason to trade")

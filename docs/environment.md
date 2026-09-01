@@ -120,7 +120,7 @@ Fixed at spawn, drawn per agent:
   are no gains from trade and no other setting can rescue the economy. This is a sampler
   correctness property, not a config value, and it is easy to get wrong invisibly.
 - **Mobility** `m_i > 0`. Traversal speed; see transit below.
-- **Sight** `sight_i >= 1`. How many posted prices in its region the agent can see.
+- **Sight** `sight_i >= 1`. How many postings in its region the agent can see.
 
 ## Spatial structure
 
@@ -174,13 +174,36 @@ Fully ordered, so the transition is deterministic given actions and RNG draws.
    yields less than the first. That is a one-line change to this phase and a config knob;
    it is deliberately not made yet, because it would change every welfare number measured
    so far and there is no evidence yet that corner production is distorting anything.
-3. **Submit offers.** Each settled agent submits at most one `OFFER(give, want, ratio)`.
-4. **Meet.** Each offer is exposed to `K` counterparties sampled within its region.
-   `K` is the search-friction knob: small `K` gives persistent dispersion and durable
-   arbitrage, `K → all` approaches Walrasian conditions.
-5. **Match and execute.** Compatible offers execute at the midpoint of the two stated
-   ratios — neutral, so neither side's stated ratio sets the price. Quantity is the
-   smaller of the two sides.
+3. **Post.** Each settled agent posts a rate matrix and a quantity cap per good.
+4. **Meet.** Each agent is exposed to `sight_i` counterparties sampled within its
+   region. `sight` is the search-friction knob: small values give persistent
+   dispersion and durable arbitrage, `sight → all` approaches Walrasian conditions.
+   Seeing is symmetric for matching — a pair is evaluated if *either* side drew the
+   other.
+5. **Match and execute.** For each meeting, the G×G sweep of directed swaps; a swap
+   is available when the two postings **cross**, `ask_i[a,b] · ask_j[b,a] < 1`. The
+   deepest crossing swap per meeting becomes a candidate, all candidates across the
+   region are sorted by **cross depth**, and they fill greedily against both sides'
+   decrementing budgets. Execution splits the bargaining interval geometrically:
+
+   ```
+   rate   r = sqrt( ask_i[a,b] / ask_j[b,a] )
+   depth  w = 1 / sqrt( ask_i[a,b] · ask_j[b,a] )   > 1 whenever crossed
+   ```
+
+   The geometric mean is **forced, not chosen.** The general split
+   `r = lo^(1−k)·hi^k` must give the reciprocal rate when the same trade is written
+   in the other good's units, which requires `k = 1/2`. Pay-as-bid and every other
+   split need a nominated money good, and a barter economy has none.
+
+   Since `r = ask_i[a,b] · w`, each side receives its own reservation demand times
+   the depth — which is why one global sort by depth simultaneously serves every
+   agent's private ranking over the competing uses of its goods. It also means
+   softening your ask to deepen the cross worsens your received rate by exactly the
+   same square root, so buying queue priority is never free.
+
+   A meeting yields **at most one trade**, which is a real restriction on volume and
+   an open question in the ledger.
 6. **Consume.** A full bundle, clipped to inventory; `+inf` means "whatever is left".
    Reward is linear in each good, so only how much of each is eaten matters, never
    the mix.
@@ -204,31 +227,79 @@ utility-bankrupt.
 ## Observation
 
 Agent `i` observes: own region or transit state, own inventory, own `θ_i`, `e_i`, `m_i`,
-the offers exposed to it this tick, accept/reject outcomes of its own offers, and ratios
-of trades it participated in. It does **not** observe others' inventories, preferences,
-efficiencies, mobility, or offers it was not exposed to.
+the postings exposed to it this tick, accept/reject outcomes of its own postings, and
+rates of trades it participated in. It does **not** observe others' inventories,
+preferences, efficiencies, mobility, or postings it was not exposed to.
 
-There is no published price. Each agent must estimate what ratio will be accepted, and
+There is no published price. Each agent must estimate what rate will be accepted, and
 that estimate is a subjective price. Price formation is the convergence of those
 estimates across the population, which is the emergence claim the project makes.
 
+The dashboard's "implied value" readout — the single valuation a rate matrix is
+nearest to — exists so a chart can draw one line per good instead of G per agent. It
+is computed in `metrics`, no agent observes it, and nothing in the tick reads it. A
+global valuation visible to agents would be exactly the published price this refuses.
+
 ## Action space
 
-One action per agent per tick. Enumerated per-state and masked, never a fixed index set —
-this is the seam that keeps action spaces swappable. In-transit agents have only `IDLE`.
+Simultaneous continuous vectors, one set per agent per tick. In-transit agents emit
+nothing: their heads are zeroed and their postings set to refusal.
 
 ```
-MOVE(region)              out-neighbors of current region, capacity permitting
-PRODUCE(good)             goods with e_ig > 0
-CONSUME(good, qty)        voluntary, continuous quantity
-OFFER(give, want, ratio)  give ∈ goods held, want ∈ goods, ratio solved not enumerated
-ACCEPT(offer)             offers exposed this tick
-IDLE                      always available
+consume    (N, G)     quantities to eat, clipped to inventory; +inf means all
+effort     (N, G)     effort allocation across goods, rows sum to <= 1
+ask        (N, G, G)  reservation rates
+max_trade  (N, G)     how much of each good the agent will part with
+move       (N,)       edge index to enter, or -1
 ```
 
-`ratio` is not enumerated. It is solved against the agent's acceptance model — expected
-value is `P_accept(r) · gain(r)`, a 1-D problem — so ratio stays a fully emergent
-continuous quantity at zero branching cost.
+### The rate matrix
+
+`ask[i, a, b]` is the **minimum units of `b` that agent `i` demands per unit of `a`
+it gives up**. `+inf` is a refusal to trade that pair at any rate; the diagonal is
+meaningless and never read.
+
+A matrix rather than a vector of valuations, because a vector pins the rate one way
+to the exact reciprocal of the rate the other way. Three things follow from that
+which the vector could not express:
+
+- **A spread.** "I will sell an apple for 2 bananas but only pay 1.5" needs
+  `ask[apple,banana] · ask[banana,apple] = 1.33 > 1`. A vector pins that product at
+  exactly 1.
+- **Shading in the right direction.** Under a vector, raising your posted apple
+  price made you a tougher apple *seller* and simultaneously a keener apple *buyer*,
+  because both directions read off one number. Shading requires the two sides to
+  move independently.
+- **Incoherence.** `ask[a,b] · ask[b,a] < 1` is an agent whose own bid crosses its
+  own ask, and longer cycles work the same way — the matrix is a currency exchange
+  table, and being pumpable is the classic negative-cycle problem. This is **legal**.
+  The mechanism guarantees both sides gain in *posted* terms, never in true utility,
+  and `metrics.arbitrage_depth` measures the exposure rather than preventing it.
+
+For G goods a vector has G−1 free parameters and a matrix has G(G−1). At G=5 that is
+4 against 20; the extra 16 are 10 spreads and 6 cross-rate inconsistencies.
+
+**There is no numeraire, and therefore no buyer and no seller.** Every agent is a
+barterer posting rates of exchange. Which side of a trade is "buying" depends
+entirely on which good you choose to price things in, and the world chooses none.
+Bid and ask are a useful *reading* of the matrix under a chosen numeraire, never a
+structure in the code.
+
+### What quantity does and does not say
+
+`max_trade` is one cap per good — how much of it the agent will part with — and not
+a schedule of quantity at each rate, nor a cap on what it will acquire. Both of
+those are **redundant under a linear reward**: a posted rate is exact at any
+quantity, so a schedule is a flat line, and with no satiation more of a good you
+value is always better. They become *necessary* if the reward ever gains curvature,
+so that decision and this one are joined.
+
+### Legality is clipping
+
+Malformed proposals are made harmless rather than rejected. `nan` in `ask` becomes a
+refusal, not a zero — flattening a refusal to zero would turn "never" into "take it
+for free", which is the most expensive possible misreading. Disabling a head is how
+ablations run: a world without `trade` is the autarky control.
 
 ## Configuration
 
@@ -243,7 +314,7 @@ WorldConfig
   ProductionConfig   efficiency_mean, efficiency_scale_spread,
                      efficiency_shape_spread, effort_cost
   MobilityConfig     mobility_mean, mobility_spread, travel_cost_per_tick
-  MarketConfig       K, execution_rule
+  MarketConfig       min_depth
   TokenConfig        token_good, anneal_start, anneal_end, anneal_schedule
   SinkConfig         spoilage[g]
 ```
@@ -253,7 +324,7 @@ WorldConfig
 | module | owns | swappable |
 |---|---|---|
 | `world` | state arrays, tick phase order | no |
-| `actions` | enumeration, masking, application | **yes** |
+| `actions` | the action vectors and their clipping | **yes** |
 | `mechanism` | meeting rule, execution rule | **yes** |
 | `policy` | decision-making | **yes** |
 | `metrics` | observables, recording | no |
@@ -265,6 +336,11 @@ WorldConfig
 ## Observables
 
 - fraction of agents producing above subsistence
+- **quoted spread** — the median round trip `ask[a,b]·ask[b,a]` a posting demands.
+  1.0 is honest reciprocal posting; above 1 is a margin demanded in both directions
+- **arbitrage depth** — the deepest money pump available against each agent, per leg
+  of the cycle, by Karp's minimum mean cycle over `log(ask)`. Detects postings that
+  do not hang together
 - trade volume, total and per good pair
 - price dispersion across regions, against edge distance
 - token acceptance rate through the anneal
